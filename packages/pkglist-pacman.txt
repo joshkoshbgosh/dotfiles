@@ -1,13 +1,13 @@
 1password-beta
 1password-cli
 aether
-alacritty
 asdcontrol
 base
 base-devel
 bash-completion
 bat
 bazecor
+bitwarden
 bluetui
 bolt
 brightnessctl
@@ -73,7 +73,6 @@ less
 lib32-nvidia-utils
 libpulse
 libqalculate
-libreoffice-fresh
 libretro-beetle-pce
 libretro-beetle-pce-fast
 libretro-beetle-psx
