@@ -1,5 +1,3 @@
-1password-beta
-1password-cli
 aether
 asdcontrol
 base
