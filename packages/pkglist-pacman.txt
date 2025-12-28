@@ -200,6 +200,7 @@ xdg-desktop-portal-hyprland
 xdg-terminal-exec
 xmlstarlet
 xournalpp
+xpadneo-dkms
 yaru-icon-theme
 yay
 zen-browser-bin

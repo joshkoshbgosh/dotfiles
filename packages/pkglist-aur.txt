@@ -2,4 +2,5 @@ bazecor
 libretro-fbneo-git
 libretro-fbneo-git-debug
 retroarch-assets-git
+xpadneo-dkms
 zen-browser-bin
