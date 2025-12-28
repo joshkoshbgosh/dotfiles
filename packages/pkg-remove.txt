@@ -1,0 +1,11 @@
+1password-beta
+1password-cli
+alacritty
+libreoffice
+
+basecamp
+whatsapp
+x
+zoom
+HEY
+fizzy
