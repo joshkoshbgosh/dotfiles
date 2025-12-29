@@ -169,6 +169,7 @@ snapper
 spotify
 starship
 steam
+stow
 sushi
 swaybg
 swayosd
