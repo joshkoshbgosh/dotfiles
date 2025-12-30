@@ -204,6 +204,7 @@ xournalpp
 xpadneo-dkms
 yaru-icon-theme
 yay
+yazi
 zen-browser-bin
 zoxide
 zram-generator
