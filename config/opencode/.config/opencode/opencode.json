@@ -1,0 +1,27 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "bash": {
+      "*": "ask",
+
+      // Read-only / inspection commands
+      "pwd": "allow",
+      "ls": "allow",
+      "cat": "allow",
+      "rg": "allow",
+      "grep": "allow",
+      "git status": "allow",
+      "git diff": "allow",
+      "git log": "allow",
+      "git show": "allow",
+      "npm test": "allow",
+    },
+
+    "edit": "allow",
+    "webfetch": "ask",
+    "external_directory": "ask",
+    "doom_loop": "ask",
+    "skill": "ask"
+  }
+}
+
