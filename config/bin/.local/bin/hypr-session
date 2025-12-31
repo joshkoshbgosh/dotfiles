@@ -3,33 +3,28 @@ set -euo pipefail
 
 h() { hyprctl dispatch "$@"; }
 
-# ---- Workspace 1: dev ----
 h workspace 1
 
-# Left: browser (Chromium)
 h exec "chromium --new-window"
-sleep 0.4
+h layoutmsg preselect l
 
-# Top-right: Neovim in Ghostty
-h layoutmsg preselect r
 h exec "ghostty +new-window -e bash -lc 'cd \"$HOME\" && nvim'"
-sleep 0.4
+h layoutmsg preselect r
 
-# Bottom-right: Ghostty shell
-h movefocus r
-h layoutmsg preselect d
 h exec "ghostty +new-window -e bash -lc 'cd \"$HOME\" && exec bash'"
 
-# ---- Workspace 2: communication ----
-h exec "[workspace 2 silent] thunderbird"
-# Discord webapp: fill in later (gtk-launch <desktop-id>)
+h workspace 2
+h exec "thunderbird"
 
-# ---- Workspace 3: organization ----
-# Notion + Notion Calendar webapps: fill in later (gtk-launch <desktop-id>)
+h workspace 3
+h exec "gtk-launch Discord"
+h exec "gtk-launch Notion"
+h exec "gtk-launch Notion-Calendar"
 
-# ---- Workspace 4: gaming ----
-h exec "[workspace 4 silent] steam -gamepadui"
+h workspace 4
+h exec "steam -gamepadui"
 
-# ---- Scratchpad: monitoring + spotify ----
-h exec "[workspace special:scratch silent] spotify"
-h exec "[workspace special:scratch silent] ghostty +new-window -e btop"
+h workspace 5
+h exec "spotify"
+
+h workspace 3
