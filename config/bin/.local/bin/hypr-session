@@ -5,122 +5,86 @@ LOGFILE="/tmp/hypr-session.log"
 : > "$LOGFILE"
 
 log() { echo "[$(date +%H:%M:%S)] $*" >> "$LOGFILE"; }
-log "=== Starting hypr-session ==="
+error() { log "ERROR: $*"; hyprctl notify -1 3000 "ERROR: $*" red; }
 
 h() { hyprctl dispatch "$@" >> "$LOGFILE" 2>&1; }
 
+SESSION_DEFAULT_TIMEOUT=30
+
+WORKSPACE_1_APPS=(
+  "chromium|chromium --new-window|H|10"
+  "ghostty-nvim|ghostty --title=nvim -e nvim -c 'cd /home/joshkosh'|V|"
+  "ghostty-shell|ghostty --title=shell -e bash||"
+)
+
+WORKSPACE_2_APPS=(
+  "thunderbird|thunderbird||30"
+)
+
+WORKSPACE_3_APPS=(
+  "discord|gtk-launch Discord||60"
+  "notion|gtk-launch Notion||60"
+  "notion-calendar|gtk-launch Notion-Calendar||60"
+)
+
+WORKSPACE_4_APPS=(
+  "steam|steam -gamepadui||120"
+)
+
+WORKSPACE_5_APPS=(
+  "spotify|spotify||30"
+)
+
+WORKSPACE_SCRATCHPAD_APPS=(
+  "spotify|spotify||30"
+)
+
 wait_for_class() {
-    local class="$1"
-    local timeout="${2:-60}"
-    log "Waiting for class: $class (timeout: ${timeout}s)"
+    local class="$1" timeout="${2:-30}"
     local start=$(date +%s)
-    while ! hyprctl clients -j 2>> "$LOGFILE" | jq -e ".[] | select(.class == \"$class\")" >/dev/null 2>&1; do
-        if [ $(($(date +%s) - start)) -gt "$timeout" ]; then
-            log "ERROR: Timeout waiting for $class"
-            return 1
-        fi
+    while ! hyprctl clients -j | jq -e ".[] | select(.class == \"$class\")" >/dev/null 2>&1; do
+        [ $(($(date +%s) - start)) -gt "$timeout" ] && return 1
         sleep 0.5
     done
-    log "Found: $class"
 }
 
-log "Launching chromium..."
-h exec "chromium --new-window"
-wait_for_class "chromium" 10
+get_address() {
+    hyprctl clients -j | jq -r ".[] | select(.class == \"$1\") | .address" | head -1
+}
 
-log "Launching ghostty nvim..."
-h exec "ghostty --title=nvim -e nvim -c 'cd /home/joshkosh'"
-wait_for_class "com.mitchellh.ghostty" 10
+get_workspace() {
+    hyprctl clients -j | jq -r ".[] | select(.class == \"$1\") | .workspace.name" | head -1
+}
 
-log "Launching ghostty shell..."
-h exec "ghostty --title=shell -e bash"
-wait_for_class "com.mitchellh.ghostty" 10
+set_split() {
+    h layoutmsg dwindle:preset "$1"
+}
 
-log "Launching thunderbird..."
-h exec "thunderbird"
-wait_for_class "org.mozilla.Thunderbird" 30
+log "=== Starting hypr-session ==="
 
-log "Launching discord..."
-h exec "gtk-launch Discord"
-wait_for_class "chrome-discord.com__channels_@me-Default" 60
+for workspace in 1 2 3 4 5 scratchpad; do
+    apps_var="WORKSPACE_${workspace^^}_APPS"
+    for app in "${!apps_var}"; do
+        IFS='|' read -r name cmd split timeout <<< "$app"
+        timeout="${timeout:-$SESSION_DEFAULT_TIMEOUT}"
 
-log "Launching notion..."
-h exec "gtk-launch Notion"
-wait_for_class "chrome-notion.so__-Default" 60
+        log "Launching $name in workspace $workspace"
+        h exec "[workspace $workspace silent] $cmd"
 
-log "Launching notion-calendar..."
-h exec "gtk-launch Notion-Calendar"
-wait_for_class "chrome-calendar.notion.so__-Default" 60
+        if ! wait_for_class "$name" "$timeout"; then
+            error "$name timeout"
+            continue
+        fi
 
-log "Launching steam..."
-h exec "steam -gamepadui"
-wait_for_class "steam" 120
+        actual_ws=$(get_workspace "$name")
+        if [ "$actual_ws" != "$workspace" ] && [ "$actual_ws" != "special:scratchpad" ]; then
+            log "Moving $name from $actual_ws to $workspace"
+            h movetoworkspacesilent "$workspace,address:$(get_address "$name")"
+        fi
 
-log "Launching spotify..."
-h exec "spotify"
-wait_for_class "spotify" 30
+        [ -n "$split" ] && set_split "$split"
+    done
+done
 
-log "Getting all window addresses..."
-hyprctl clients -j > /tmp/hypr-windows.json
-
-CHROMIUM_ADDR=$(jq -r '.[] | select(.class == "chromium") | .address' /tmp/hypr-windows.json | head -1)
-GHOSTTY_ADDRS=$(jq -r '.[] | select(.class == "com.mitchellh.ghostty") | .address' /tmp/hypr-windows.json)
-GHOSTTY_NVIM_ADDR=$(echo "$GHOSTTY_ADDRS" | head -1)
-GHOSTTY_SHELL_ADDR=$(echo "$GHOSTTY_ADDRS" | head -2 | tail -1)
-THUNDERBIRD_ADDR=$(jq -r '.[] | select(.class == "org.mozilla.Thunderbird") | .address' /tmp/hypr-windows.json | head -1)
-DISCORD_ADDR=$(jq -r '.[] | select(.class == "chrome-discord.com__channels_@me-Default") | .address' /tmp/hypr-windows.json | head -1)
-NOTION_ADDR=$(jq -r '.[] | select(.class == "chrome-notion.so__-Default") | .address' /tmp/hypr-windows.json | head -1)
-NOTION_CAL_ADDR=$(jq -r '.[] | select(.class == "chrome-calendar.notion.so__-Default") | .address' /tmp/hypr-windows.json | head -1)
-STEAM_ADDR=$(jq -r '.[] | select(.class == "steam") | .address' /tmp/hypr-windows.json | head -1)
-SPOTIFY_ADDR=$(jq -r '.[] | select(.class == "spotify") | .address' /tmp/hypr-windows.json | head -1)
-
-log "Chromium: $CHROMIUM_ADDR"
-log "Ghostty nvim: $GHOSTTY_NVIM_ADDR"
-log "Ghostty shell: $GHOSTTY_SHELL_ADDR"
-log "Thunderbird: $THUNDERBIRD_ADDR"
-log "Discord: $DISCORD_ADDR"
-log "Notion: $NOTION_ADDR"
-log "Notion Calendar: $NOTION_CAL_ADDR"
-log "Steam: $STEAM_ADDR"
-log "Spotify: $SPOTIFY_ADDR"
-
-log "Moving windows to target workspaces..."
-
-log "Moving chromium..."
-h movetoworkspacesilent 1,address:$CHROMIUM_ADDR
-
-log "Moving ghostty nvim..."
-h movetoworkspacesilent 1,address:$GHOSTTY_NVIM_ADDR
-
-log "Moving ghostty shell..."
-h movetoworkspacesilent 1,address:$GHOSTTY_SHELL_ADDR
-
-log "Moving thunderbird..."
-h movetoworkspacesilent 2,address:$THUNDERBIRD_ADDR
-
-log "Moving discord..."
-h movetoworkspacesilent 3,address:$DISCORD_ADDR
-
-log "Moving notion..."
-h movetoworkspacesilent 3,address:$NOTION_ADDR
-
-log "Moving notion-calendar..."
-h movetoworkspacesilent 3,address:$NOTION_CAL_ADDR
-
-log "Moving steam..."
-if [ -n "$STEAM_ADDR" ]; then
-    h movetoworkspacesilent 4,address:$STEAM_ADDR
-else
-    log "WARNING: Steam address empty, skipping move"
-fi
-
-log "Moving spotify..."
-h movetoworkspacesilent special:scratchpad,address:$SPOTIFY_ADDR
-
-log "Final window state:"
-hyprctl clients -j 2>> "$LOGFILE" | jq -r '.[] | "  \(.workspace.id): \(.class) - \(.title)"' >> "$LOGFILE"
-
-log "Switching to workspace 3 (Notion)"
 h workspace 3
-
 log "=== hypr-session complete ==="
