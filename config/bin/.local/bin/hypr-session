@@ -24,89 +24,47 @@ wait_for_window() {
     log "Found window with class: $class"
 }
 
-log "Switching to workspace 1"
-h workspace 1
-
-log "Launching chromium"
-h exec "chromium --new-window"
+log "Workspace 1: Launching chromium"
+h exec "[workspace 1 silent] chromium --new-window"
 wait_for_window "chromium" || log "WARNING: chromium window not found"
 
-log "Launching nvim ghostty"
-h exec "ghostty +new-window -e bash -lc 'cd /home/joshkosh && nvim'"
+log "Workspace 1: Launching nvim ghostty"
+h exec "[workspace 1 silent] ghostty +new-window -e bash -lc 'cd /home/joshkosh && nvim'"
 wait_for_window "com.mitchellh.ghostty" || log "WARNING: nvim ghostty window not found"
 
-log "Launching shell ghostty"
-h exec "ghostty +new-window -e bash -lc 'cd /home/joshkosh && exec bash'"
+log "Workspace 1: Launching shell ghostty"
+h exec "[workspace 1 silent] ghostty +new-window -e bash -lc 'cd /home/joshkosh && exec bash'"
 wait_for_window "com.mitchellh.ghostty" || log "WARNING: shell ghostty window not found"
 
-log "Switching to workspace 2"
-h workspace 2
-log "Launching thunderbird"
-h exec "thunderbird"
+log "Workspace 2: Launching thunderbird"
+h exec "[workspace 2 silent] thunderbird"
 wait_for_window "org.mozilla.Thunderbird" || log "WARNING: thunderbird window not found"
 
-log "Switching to workspace 3"
-h workspace 3
-log "Launching discord"
-h exec "gtk-launch Discord"
+log "Workspace 3: Launching discord"
+h exec "[workspace 3 silent] gtk-launch Discord"
 wait_for_window "chrome-discord.com__channels_@me-Default" || log "WARNING: discord window not found"
 
-log "Launching notion"
-h exec "gtk-launch Notion"
+log "Workspace 3: Launching notion"
+h exec "[workspace 3 silent] gtk-launch Notion"
 wait_for_window "chrome-notion.so__-Default" || log "WARNING: notion window not found"
 
-log "Launching notion-calendar"
-h exec "gtk-launch Notion-Calendar"
+log "Workspace 3: Launching notion-calendar"
+h exec "[workspace 3 silent] gtk-launch Notion-Calendar"
 wait_for_window "chrome-calendar.notion.so__-Default" || log "WARNING: notion-calendar window not found"
 
-log "Switching to workspace 4"
-h workspace 4
-log "Launching steam"
-h exec "steam -gamepadui"
+log "Workspace 4: Launching steam"
+h exec "[workspace 4 silent] steam -gamepadui"
 wait_for_window "steam" || log "WARNING: steam window not found"
 
-log "Switching to workspace 5"
-h workspace 5
-log "Launching spotify"
-h exec "spotify"
+log "Workspace 5: Launching spotify"
+h exec "[workspace 5 silent] spotify"
 wait_for_window "spotify" || log "WARNING: spotify window not found"
-
-log "=== Moving windows to target workspaces ==="
-log "Moving chromium to workspace 1"
-h movetoworkspacesilent 1,class:(chromium)
-
-log "Moving ghostty to workspace 1"
-h movetoworkspacesilent 1,class:(com.mitchellh.ghostty)
-
-log "Moving thunderbird to workspace 2"
-h movetoworkspacesilent 2,class:(org.mozilla.Thunderbird)
-
-log "Moving discord to workspace 3"
-h movetoworkspacesilent 3,class:(chrome-discord.com__channels_@me-Default)
-
-log "Moving notion to workspace 3"
-h movetoworkspacesilent 3,class:(chrome-notion.so__-Default)
-
-log "Moving notion-calendar to workspace 3"
-h movetoworkspacesilent 3,class:(chrome-calendar.notion.so__-Default)
-
-log "Moving steam to workspace 4"
-h movetoworkspacesilent 4,class:(steam)
-
-log "Moving spotify to workspace 5"
-h movetoworkspacesilent 5,class:(spotify)
 
 log "=== Final window state ==="
 log "All windows:"
 hyprctl clients -j 2>> "$LOGFILE" | jq -r '.[] | "  \(.workspace.id): \(.class) - \(.title)"' >> "$LOGFILE"
 
-log "Switching to workspace 3"
+log "Switching to workspace 3 (Notion)"
 h workspace 3
-
-log "Setting up workspace 1 layout"
-h workspace 1
-h layoutmsg preselect l
-h layoutmsg preselect r
-h layoutmsg preselect d
 
 log "=== hypr-session complete ==="
