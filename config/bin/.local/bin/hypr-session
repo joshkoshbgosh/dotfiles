@@ -53,6 +53,8 @@ process_workspace() {
         IFS='|' read -r name class cmd split timeout <<< "$app"
         timeout="${timeout:-$SESSION_DEFAULT_TIMEOUT}"
         
+        [ -n "$split" ] && set_split "$split"
+        
         log "Launching $name in workspace $workspace"
         h exec "[workspace $workspace silent] $cmd"
         
@@ -62,7 +64,6 @@ process_workspace() {
         fi
         
         move_to_workspace "$class" "$workspace"
-        [ -n "$split" ] && set_split "$split"
     done
 }
 
