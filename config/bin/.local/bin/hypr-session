@@ -32,10 +32,11 @@ sleep 3
 log "Getting all window addresses..."
 hyprctl clients -j > /tmp/hypr-windows.json
 
-log "Extracting addresses by class..."
+log "Extracting addresses..."
 CHROMIUM_ADDR=$(jq -r '.[] | select(.class == "chromium") | .address' /tmp/hypr-windows.json | head -1)
-GHOSTTY_NVIM_ADDR=$(jq -r '.[] | select(.class == "com.mitchellh.ghostty") | .address' /tmp/hypr-windows.json | head -1)
-GHOSTTY_SHELL_ADDR=$(jq -r '.[] | select(.class == "com.mitchellh.ghostty") | .address' /tmp/hypr-windows.json | head -2 | tail -1)
+GHOSTTY_ADDRS=$(jq -r '.[] | select(.class == "com.mitchellh.ghostty") | .address' /tmp/hypr-windows.json)
+GHOSTTY_NVIM_ADDR=$(echo "$GHOSTTY_ADDRS" | head -1)
+GHOSTTY_SHELL_ADDR=$(echo "$GHOSTTY_ADDRS" | head -2 | tail -1)
 THUNDERBIRD_ADDR=$(jq -r '.[] | select(.class == "org.mozilla.Thunderbird") | .address' /tmp/hypr-windows.json | head -1)
 DISCORD_ADDR=$(jq -r '.[] | select(.class == "chrome-discord.com__channels_@me-Default") | .address' /tmp/hypr-windows.json | head -1)
 NOTION_ADDR=$(jq -r '.[] | select(.class == "chrome-notion.so__-Default") | .address' /tmp/hypr-windows.json | head -1)
@@ -53,18 +54,34 @@ log "Notion Calendar: $NOTION_CAL_ADDR"
 log "Steam: $STEAM_ADDR"
 log "Spotify: $SPOTIFY_ADDR"
 
-log "Moving all windows to target workspaces..."
-hyprctl --batch "
-    dispatch movetoworkspacesilent 1,address:$CHROMIUM_ADDR
-    dispatch movetoworkspacesilent 1,address:$GHOSTTY_NVIM_ADDR
-    dispatch movetoworkspacesilent 1,address:$GHOSTTY_SHELL_ADDR
-    dispatch movetoworkspacesilent 2,address:$THUNDERBIRD_ADDR
-    dispatch movetoworkspacesilent 3,address:$DISCORD_ADDR
-    dispatch movetoworkspacesilent 3,address:$NOTION_ADDR
-    dispatch movetoworkspacesilent 3,address:$NOTION_CAL_ADDR
-    dispatch movetoworkspacesilent 4,address:$STEAM_ADDR
-    dispatch movetoworkspacesilent 5,address:$SPOTIFY_ADDR
-" >> "$LOGFILE" 2>&1
+log "Moving windows to target workspaces..."
+
+log "Moving chromium..."
+h movetoworkspacesilent 1,address:$CHROMIUM_ADDR
+
+log "Moving ghostty nvim..."
+h movetoworkspacesilent 1,address:$GHOSTTY_NVIM_ADDR
+
+log "Moving ghostty shell..."
+h movetoworkspacesilent 1,address:$GHOSTTY_SHELL_ADDR
+
+log "Moving thunderbird..."
+h movetoworkspacesilent 2,address:$THUNDERBIRD_ADDR
+
+log "Moving discord..."
+h movetoworkspacesilent 3,address:$DISCORD_ADDR
+
+log "Moving notion..."
+h movetoworkspacesilent 3,address:$NOTION_ADDR
+
+log "Moving notion-calendar..."
+h movetoworkspacesilent 3,address:$NOTION_CAL_ADDR
+
+log "Moving steam..."
+h movetoworkspacesilent 4,address:$STEAM_ADDR
+
+log "Moving spotify..."
+h movetoworkspacesilent 5,address:$SPOTIFY_ADDR
 
 log "Final window state:"
 hyprctl clients -j 2>> "$LOGFILE" | jq -r '.[] | "  \(.workspace.id): \(.class) - \(.title)"' >> "$LOGFILE"
