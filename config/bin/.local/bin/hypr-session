@@ -6,38 +6,7 @@ LOGFILE="/tmp/hypr-session.log"
 
 log() { echo "[$(date +%H:%M:%S)] $*" >> "$LOGFILE"; }
 error() { log "ERROR: $*"; hyprctl notify -1 3000 "ERROR: $*" red; }
-
 h() { hyprctl dispatch "$@" >> "$LOGFILE" 2>&1; }
-
-SESSION_DEFAULT_TIMEOUT=30
-
-WORKSPACE_1_APPS=(
-  "chromium|chromium --new-window|H|10"
-  "ghostty-nvim|ghostty --title=nvim -e nvim -c 'cd /home/joshkosh'|V|"
-  "ghostty-shell|ghostty --title=shell -e bash||"
-)
-
-WORKSPACE_2_APPS=(
-  "thunderbird|thunderbird||30"
-)
-
-WORKSPACE_3_APPS=(
-  "discord|gtk-launch Discord||60"
-  "notion|gtk-launch Notion||60"
-  "notion-calendar|gtk-launch Notion-Calendar||60"
-)
-
-WORKSPACE_4_APPS=(
-  "steam|steam -gamepadui||120"
-)
-
-WORKSPACE_5_APPS=(
-  "spotify|spotify||30"
-)
-
-WORKSPACE_SCRATCHPAD_APPS=(
-  "spotify|spotify||30"
-)
 
 wait_for_class() {
     local class="$1" timeout="${2:-30}"
@@ -60,31 +29,79 @@ set_split() {
     h layoutmsg dwindle:preset "$1"
 }
 
-log "=== Starting hypr-session ==="
+move_to_workspace() {
+    local class="$1" target_ws="$2"
+    local addr=$(get_address "$class")
+    local current_ws=$(get_workspace "$class")
+    
+    if [ -z "$addr" ]; then
+        error "$class address not found"
+        return 1
+    fi
+    
+    if [ "$current_ws" != "$target_ws" ] && [ "$current_ws" != "special:scratchpad" ]; then
+        log "Moving $class from $current_ws to $target_ws"
+        h movetoworkspacesilent "$target_ws,address:$addr"
+    fi
+}
 
-for workspace in 1 2 3 4 5 scratchpad; do
-    apps_var="WORKSPACE_${workspace^^}_APPS"
-    for app in "${!apps_var}"; do
-        IFS='|' read -r name cmd split timeout <<< "$app"
+process_workspace() {
+    local workspace="$1"; shift
+    local apps=("$@")
+    
+    for app in "${apps[@]}"; do
+        IFS='|' read -r name class cmd split timeout <<< "$app"
         timeout="${timeout:-$SESSION_DEFAULT_TIMEOUT}"
-
+        
         log "Launching $name in workspace $workspace"
         h exec "[workspace $workspace silent] $cmd"
-
-        if ! wait_for_class "$name" "$timeout"; then
-            error "$name timeout"
+        
+        if ! wait_for_class "$class" "$timeout"; then
+            error "$name ($class) timeout"
             continue
         fi
-
-        actual_ws=$(get_workspace "$name")
-        if [ "$actual_ws" != "$workspace" ] && [ "$actual_ws" != "special:scratchpad" ]; then
-            log "Moving $name from $actual_ws to $workspace"
-            h movetoworkspacesilent "$workspace,address:$(get_address "$name")"
-        fi
-
+        
+        move_to_workspace "$class" "$workspace"
         [ -n "$split" ] && set_split "$split"
     done
-done
+}
 
+SESSION_DEFAULT_TIMEOUT=30
+
+WORKSPACE_1_APPS=(
+  "chromium|chromium|chromium --new-window|H|10"
+  "ghostty-nvim|com.mitchellh.ghostty|ghostty --title=nvim -e nvim -c 'cd /home/joshkosh'|V|"
+  "ghostty-shell|com.mitchellh.ghostty|ghostty --title=shell -e bash||"
+)
+
+WORKSPACE_2_APPS=(
+  "thunderbird|org.mozilla.Thunderbird|thunderbird||30"
+)
+
+WORKSPACE_3_APPS=(
+  "discord|chrome-discord.com__channels_@me-Default|gtk-launch Discord||60"
+  "notion|chrome-notion.so__-Default|gtk-launch Notion||60"
+  "notion-calendar|chrome-calendar.notion.so__-Default|gtk-launch Notion-Calendar||60"
+)
+
+WORKSPACE_4_APPS=(
+  "steam|steam|steam -gamepadui||120"
+)
+
+WORKSPACE_5_APPS=(
+  "spotify|spotify|spotify||30"
+)
+
+WORKSPACE_SCRATCHPAD_APPS=(
+  "spotify|spotify|spotify||30"
+)
+
+log "=== Starting hypr-session ==="
+process_workspace 1 "${WORKSPACE_1_APPS[@]}"
+process_workspace 2 "${WORKSPACE_2_APPS[@]}"
+process_workspace 3 "${WORKSPACE_3_APPS[@]}"
+process_workspace 4 "${WORKSPACE_4_APPS[@]}"
+process_workspace 5 "${WORKSPACE_5_APPS[@]}"
+process_workspace "special:scratchpad" "${WORKSPACE_SCRATCHPAD_APPS[@]}"
 h workspace 3
 log "=== hypr-session complete ==="
