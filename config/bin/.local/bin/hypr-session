@@ -29,7 +29,7 @@ h exec "chromium --new-window"
 wait_for_class "chromium" 10
 
 log "Launching ghostty nvim..."
-h exec "ghostty --title nvim -e nvim -c 'cd /home/joshkosh'"
+h exec "ghostty --title=nvim -e nvim -c 'cd /home/joshkosh'"
 wait_for_class "com.mitchellh.ghostty" 10
 
 log "Launching ghostty shell..."
