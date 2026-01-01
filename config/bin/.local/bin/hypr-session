@@ -115,7 +115,7 @@ else
 fi
 
 log "Moving spotify..."
-h movetoworkspacesilent special:scratch,address:$SPOTIFY_ADDR
+h movetoworkspacesilent special:scratchpad,address:$SPOTIFY_ADDR
 
 log "Final window state:"
 hyprctl clients -j 2>> "$LOGFILE" | jq -r '.[] | "  \(.workspace.id): \(.class) - \(.title)"' >> "$LOGFILE"
