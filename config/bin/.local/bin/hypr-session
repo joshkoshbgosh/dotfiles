@@ -17,8 +17,8 @@ launch() {
 
 log "Launching all apps..."
 launch "chromium --new-window"
-launch "ghostty +new-window -e bash -lc 'cd /home/joshkosh && nvim'"
-launch "ghostty +new-window -e bash -lc 'cd /home/joshkosh && exec bash'"
+launch "ghostty --title nvim -e nvim -c 'cd /home/joshkosh'"
+launch "ghostty --title shell -e bash"
 launch "thunderbird"
 launch "gtk-launch Discord"
 launch "gtk-launch Notion"
@@ -54,6 +54,14 @@ log "Notion Calendar: $NOTION_CAL_ADDR"
 log "Steam: $STEAM_ADDR"
 log "Spotify: $SPOTIFY_ADDR"
 
+if [ -z "$STEAM_ADDR" ]; then
+    log "Steam not found, waiting longer..."
+    sleep 5
+    hyprctl clients -j > /tmp/hypr-windows.json
+    STEAM_ADDR=$(jq -r '.[] | select(.class == "steam") | .address' /tmp/hypr-windows.json | head -1)
+    log "Steam (retry): $STEAM_ADDR"
+fi
+
 log "Moving windows to target workspaces..."
 
 log "Moving chromium..."
@@ -78,7 +86,11 @@ log "Moving notion-calendar..."
 h movetoworkspacesilent 3,address:$NOTION_CAL_ADDR
 
 log "Moving steam..."
-h movetoworkspacesilent 4,address:$STEAM_ADDR
+if [ -n "$STEAM_ADDR" ]; then
+    h movetoworkspacesilent 4,address:$STEAM_ADDR
+else
+    log "WARNING: Steam address still empty, skipping move"
+fi
 
 log "Moving spotify..."
 h movetoworkspacesilent 5,address:$SPOTIFY_ADDR
