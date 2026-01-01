@@ -9,30 +9,60 @@ log "=== Starting hypr-session ==="
 
 h() { hyprctl dispatch "$@" >> "$LOGFILE" 2>&1; }
 
-launch() {
-    local cmd="$1"
-    log "Launching: $cmd"
-    h exec "$cmd"
+wait_for_class() {
+    local class="$1"
+    local timeout="${2:-60}"
+    log "Waiting for class: $class (timeout: ${timeout}s)"
+    local start=$(date +%s)
+    while ! hyprctl clients -j 2>> "$LOGFILE" | jq -e ".[] | select(.class == \"$class\")" >/dev/null 2>&1; do
+        if [ $(($(date +%s) - start)) -gt "$timeout" ]; then
+            log "ERROR: Timeout waiting for $class"
+            return 1
+        fi
+        sleep 0.5
+    done
+    log "Found: $class"
 }
 
-log "Launching all apps..."
-launch "chromium --new-window"
-launch "ghostty --title nvim -e nvim -c 'cd /home/joshkosh'"
-launch "ghostty --title shell -e bash"
-launch "thunderbird"
-launch "gtk-launch Discord"
-launch "gtk-launch Notion"
-launch "gtk-launch Notion-Calendar"
-launch "steam -gamepadui"
-launch "spotify"
+log "Launching chromium..."
+h exec "chromium --new-window"
+wait_for_class "chromium" 10
 
-log "Waiting for all windows to appear..."
-sleep 3
+log "Launching ghostty nvim..."
+h exec "ghostty +new-window -e bash -c 'cd /home/joshkosh && nvim'"
+wait_for_class "com.mitchellh.ghostty" 10
+
+log "Launching ghostty shell..."
+h exec "ghostty +new-window -e bash -c 'cd /home/joshkosh && exec bash'"
+wait_for_class "com.mitchellh.ghostty" 10
+
+log "Launching thunderbird..."
+h exec "thunderbird"
+wait_for_class "org.mozilla.Thunderbird" 30
+
+log "Launching discord..."
+h exec "gtk-launch Discord"
+wait_for_class "chrome-discord.com__channels_@me-Default" 60
+
+log "Launching notion..."
+h exec "gtk-launch Notion"
+wait_for_class "chrome-notion.so__-Default" 60
+
+log "Launching notion-calendar..."
+h exec "gtk-launch Notion-Calendar"
+wait_for_class "chrome-calendar.notion.so__-Default" 60
+
+log "Launching steam..."
+h exec "steam -gamepadui"
+wait_for_class "steam" 120
+
+log "Launching spotify..."
+h exec "spotify"
+wait_for_class "spotify" 30
 
 log "Getting all window addresses..."
 hyprctl clients -j > /tmp/hypr-windows.json
 
-log "Extracting addresses..."
 CHROMIUM_ADDR=$(jq -r '.[] | select(.class == "chromium") | .address' /tmp/hypr-windows.json | head -1)
 GHOSTTY_ADDRS=$(jq -r '.[] | select(.class == "com.mitchellh.ghostty") | .address' /tmp/hypr-windows.json)
 GHOSTTY_NVIM_ADDR=$(echo "$GHOSTTY_ADDRS" | head -1)
@@ -53,14 +83,6 @@ log "Notion: $NOTION_ADDR"
 log "Notion Calendar: $NOTION_CAL_ADDR"
 log "Steam: $STEAM_ADDR"
 log "Spotify: $SPOTIFY_ADDR"
-
-if [ -z "$STEAM_ADDR" ]; then
-    log "Steam not found, waiting longer..."
-    sleep 5
-    hyprctl clients -j > /tmp/hypr-windows.json
-    STEAM_ADDR=$(jq -r '.[] | select(.class == "steam") | .address' /tmp/hypr-windows.json | head -1)
-    log "Steam (retry): $STEAM_ADDR"
-fi
 
 log "Moving windows to target workspaces..."
 
@@ -89,7 +111,7 @@ log "Moving steam..."
 if [ -n "$STEAM_ADDR" ]; then
     h movetoworkspacesilent 4,address:$STEAM_ADDR
 else
-    log "WARNING: Steam address still empty, skipping move"
+    log "WARNING: Steam address empty, skipping move"
 fi
 
 log "Moving spotify..."
