@@ -136,6 +136,7 @@ omarchy-chromium
 omarchy-keyring
 omarchy-nvim
 omarchy-walker
+opencode
 pamixer
 pinta
 pipewire
