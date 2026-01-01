@@ -32,11 +32,11 @@ h exec "chromium --new-window"
 wait_for_window "chromium" || log "WARNING: chromium window not found"
 
 log "Launching nvim ghostty"
-h exec "ghostty +new-window -e bash -lc 'cd \"$HOME\" && nvim'"
+h exec "ghostty +new-window -e bash -lc 'cd /home/joshkosh && nvim'"
 wait_for_window "com.mitchellh.ghostty" || log "WARNING: nvim ghostty window not found"
 
 log "Launching shell ghostty"
-h exec "ghostty +new-window -e bash -lc 'cd \"$HOME\" && exec bash'"
+h exec "ghostty +new-window -e bash -lc 'cd /home/joshkosh && exec bash'"
 wait_for_window "com.mitchellh.ghostty" || log "WARNING: shell ghostty window not found"
 
 log "Switching to workspace 2"
@@ -53,11 +53,11 @@ wait_for_window "chrome-discord.com__channels_@me-Default" || log "WARNING: disc
 
 log "Launching notion"
 h exec "gtk-launch Notion"
-wait_for_window "chromium" || log "WARNING: notion window not found"
+wait_for_window "chrome-notion.so__-Default" || log "WARNING: notion window not found"
 
 log "Launching notion-calendar"
 h exec "gtk-launch Notion-Calendar"
-wait_for_window "chromium" || log "WARNING: notion-calendar window not found"
+wait_for_window "chrome-calendar.notion.so__-Default" || log "WARNING: notion-calendar window not found"
 
 log "Switching to workspace 4"
 h workspace 4
@@ -85,10 +85,10 @@ log "Moving discord to workspace 3"
 h movetoworkspacesilent 3,class:(chrome-discord.com__channels_@me-Default)
 
 log "Moving notion to workspace 3"
-h movetoworkspacesilent 3,class:(chromium)
+h movetoworkspacesilent 3,class:(chrome-notion.so__-Default)
 
 log "Moving notion-calendar to workspace 3"
-h movetoworkspacesilent 3,class:(chromium)
+h movetoworkspacesilent 3,class:(chrome-calendar.notion.so__-Default)
 
 log "Moving steam to workspace 4"
 h movetoworkspacesilent 4,class:(steam)
