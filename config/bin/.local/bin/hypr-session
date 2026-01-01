@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
 
 LOGFILE="/tmp/hypr-session.log"
 : > "$LOGFILE"
@@ -29,47 +29,47 @@ h workspace 1
 
 log "Launching chromium"
 h exec "chromium --new-window"
-wait_for_window "chromium"
+wait_for_window "chromium" || log "WARNING: chromium window not found"
 
 log "Launching nvim ghostty"
 h exec "ghostty +new-window -e bash -lc 'cd \"$HOME\" && nvim'"
-wait_for_window "com.mitchellh.ghostty"
+wait_for_window "com.mitchellh.ghostty" || log "WARNING: nvim ghostty window not found"
 
 log "Launching shell ghostty"
 h exec "ghostty +new-window -e bash -lc 'cd \"$HOME\" && exec bash'"
-wait_for_window "com.mitchellh.ghostty"
+wait_for_window "com.mitchellh.ghostty" || log "WARNING: shell ghostty window not found"
 
 log "Switching to workspace 2"
 h workspace 2
 log "Launching thunderbird"
 h exec "thunderbird"
-wait_for_window "org.mozilla.Thunderbird"
+wait_for_window "org.mozilla.Thunderbird" || log "WARNING: thunderbird window not found"
 
 log "Switching to workspace 3"
 h workspace 3
 log "Launching discord"
 h exec "gtk-launch Discord"
-wait_for_window "chrome-discord.com"
+wait_for_window "chrome-discord.com__channels_@me-Default" || log "WARNING: discord window not found"
 
 log "Launching notion"
 h exec "gtk-launch Notion"
-wait_for_window "chrome-notion.so"
+wait_for_window "chromium" || log "WARNING: notion window not found"
 
 log "Launching notion-calendar"
 h exec "gtk-launch Notion-Calendar"
-wait_for_window "chrome-calendar.notion.so"
+wait_for_window "chromium" || log "WARNING: notion-calendar window not found"
 
 log "Switching to workspace 4"
 h workspace 4
 log "Launching steam"
 h exec "steam -gamepadui"
-wait_for_window "steam"
+wait_for_window "steam" || log "WARNING: steam window not found"
 
 log "Switching to workspace 5"
 h workspace 5
 log "Launching spotify"
 h exec "spotify"
-wait_for_window "spotify"
+wait_for_window "spotify" || log "WARNING: spotify window not found"
 
 log "=== Moving windows to target workspaces ==="
 log "Moving chromium to workspace 1"
@@ -82,13 +82,13 @@ log "Moving thunderbird to workspace 2"
 h movetoworkspacesilent 2,class:(org.mozilla.Thunderbird)
 
 log "Moving discord to workspace 3"
-h movetoworkspacesilent 3,class:(chrome-discord.com)
+h movetoworkspacesilent 3,class:(chrome-discord.com__channels_@me-Default)
 
 log "Moving notion to workspace 3"
-h movetoworkspacesilent 3,class:(chrome-notion.so)
+h movetoworkspacesilent 3,class:(chromium)
 
 log "Moving notion-calendar to workspace 3"
-h movetoworkspacesilent 3,class:(chrome-calendar.notion.so)
+h movetoworkspacesilent 3,class:(chromium)
 
 log "Moving steam to workspace 4"
 h movetoworkspacesilent 4,class:(steam)
@@ -97,7 +97,6 @@ log "Moving spotify to workspace 5"
 h movetoworkspacesilent 5,class:(spotify)
 
 log "=== Final window state ==="
-hyprctl clients -j >> "$LOGFILE" 2>&1
 log "All windows:"
 hyprctl clients -j 2>> "$LOGFILE" | jq -r '.[] | "  \(.workspace.id): \(.class) - \(.title)"' >> "$LOGFILE"
 
