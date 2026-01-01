@@ -17,7 +17,7 @@
       "npm test": "allow",
     },
 
-    "edit": "allow",
+    "edit": "ask",
     "webfetch": "ask",
     "external_directory": "ask",
     "doom_loop": "ask",
