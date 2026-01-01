@@ -1,66 +1,113 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-h() { hyprctl dispatch "$@"; }
+LOGFILE="/tmp/hypr-session.log"
+: > "$LOGFILE"
+
+log() { echo "[$(date +%H:%M:%S)] $*" >> "$LOGFILE"; }
+log "=== Starting hypr-session ==="
+
+h() { hyprctl dispatch "$@" >> "$LOGFILE" 2>&1; }
 
 wait_for_window() {
     local class="$1"
     local timeout="${2:-5}"
+    log "Waiting for window with class: $class (timeout: ${timeout}s)"
     local start=$(date +%s)
-    while ! hyprctl clients -j | jq -e ".[] | select(.class == \"$class\")" >/dev/null 2>&1; do
+    while ! hyprctl clients -j 2>> "$LOGFILE" | jq -e ".[] | select(.class == \"$class\")" >/dev/null 2>&1; do
         if [ $(($(date +%s) - start)) -gt "$timeout" ]; then
-            echo "Timeout waiting for $class" >&2
+            log "ERROR: Timeout waiting for $class"
             return 1
         fi
         sleep 0.1
     done
+    log "Found window with class: $class"
 }
 
+log "Switching to workspace 1"
 h workspace 1
 
+log "Launching chromium"
 h exec "chromium --new-window"
 wait_for_window "chromium"
 
+log "Launching nvim ghostty"
 h exec "ghostty +new-window -e bash -lc 'cd \"$HOME\" && nvim'"
 wait_for_window "com.mitchellh.ghostty"
 
+log "Launching shell ghostty"
 h exec "ghostty +new-window -e bash -lc 'cd \"$HOME\" && exec bash'"
 wait_for_window "com.mitchellh.ghostty"
 
+log "Switching to workspace 2"
 h workspace 2
+log "Launching thunderbird"
 h exec "thunderbird"
 wait_for_window "org.mozilla.Thunderbird"
 
+log "Switching to workspace 3"
 h workspace 3
+log "Launching discord"
 h exec "gtk-launch Discord"
 wait_for_window "chrome-discord.com"
 
+log "Launching notion"
 h exec "gtk-launch Notion"
 wait_for_window "chrome-notion.so"
 
+log "Launching notion-calendar"
 h exec "gtk-launch Notion-Calendar"
 wait_for_window "chrome-calendar.notion.so"
 
+log "Switching to workspace 4"
 h workspace 4
+log "Launching steam"
 h exec "steam -gamepadui"
 wait_for_window "steam"
 
+log "Switching to workspace 5"
 h workspace 5
+log "Launching spotify"
 h exec "spotify"
 wait_for_window "spotify"
 
+log "=== Moving windows to target workspaces ==="
+log "Moving chromium to workspace 1"
 h movetoworkspacesilent 1,class:(chromium)
+
+log "Moving ghostty to workspace 1"
 h movetoworkspacesilent 1,class:(com.mitchellh.ghostty)
+
+log "Moving thunderbird to workspace 2"
 h movetoworkspacesilent 2,class:(org.mozilla.Thunderbird)
+
+log "Moving discord to workspace 3"
 h movetoworkspacesilent 3,class:(chrome-discord.com)
+
+log "Moving notion to workspace 3"
 h movetoworkspacesilent 3,class:(chrome-notion.so)
+
+log "Moving notion-calendar to workspace 3"
 h movetoworkspacesilent 3,class:(chrome-calendar.notion.so)
+
+log "Moving steam to workspace 4"
 h movetoworkspacesilent 4,class:(steam)
+
+log "Moving spotify to workspace 5"
 h movetoworkspacesilent 5,class:(spotify)
 
+log "=== Final window state ==="
+hyprctl clients -j >> "$LOGFILE" 2>&1
+log "All windows:"
+hyprctl clients -j 2>> "$LOGFILE" | jq -r '.[] | "  \(.workspace.id): \(.class) - \(.title)"' >> "$LOGFILE"
+
+log "Switching to workspace 3"
+h workspace 3
+
+log "Setting up workspace 1 layout"
 h workspace 1
 h layoutmsg preselect l
 h layoutmsg preselect r
 h layoutmsg preselect d
 
-h workspace 3
+log "=== hypr-session complete ==="
