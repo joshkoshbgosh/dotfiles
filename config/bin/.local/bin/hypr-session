@@ -29,11 +29,11 @@ h exec "chromium --new-window"
 wait_for_class "chromium" 10
 
 log "Launching ghostty nvim..."
-h exec "ghostty +new-window -e bash -lc 'cd /home/joshkosh && nvim'"
+h exec "ghostty --title nvim -e nvim -c 'cd /home/joshkosh'"
 wait_for_class "com.mitchellh.ghostty" 10
 
 log "Launching ghostty shell..."
-h exec "ghostty +new-window -e bash -lc 'cd /home/joshkosh && exec bash'"
+h exec "ghostty --title shell -e bash"
 wait_for_class "com.mitchellh.ghostty" 10
 
 log "Launching thunderbird..."
