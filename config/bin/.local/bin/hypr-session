@@ -13,36 +13,44 @@ launch() {
     local cmd="$1"
     log "Launching: $cmd"
     h exec "$cmd"
-    sleep 0.2
-    hyprctl clients -j | jq -r '.[] | .address' | tail -1
 }
 
 log "Launching all apps..."
-CHROMIUM_ADDR=$(launch "chromium --new-window")
+launch "chromium --new-window"
+launch "ghostty +new-window -e bash -lc 'cd /home/joshkosh && nvim'"
+launch "ghostty +new-window -e bash -lc 'cd /home/joshkosh && exec bash'"
+launch "thunderbird"
+launch "gtk-launch Discord"
+launch "gtk-launch Notion"
+launch "gtk-launch Notion-Calendar"
+launch "steam -gamepadui"
+launch "spotify"
+
+log "Waiting for all windows to appear..."
+sleep 3
+
+log "Getting all window addresses..."
+hyprctl clients -j > /tmp/hypr-windows.json
+
+log "Extracting addresses by class..."
+CHROMIUM_ADDR=$(jq -r '.[] | select(.class == "chromium") | .address' /tmp/hypr-windows.json | head -1)
+GHOSTTY_NVIM_ADDR=$(jq -r '.[] | select(.class == "com.mitchellh.ghostty") | .address' /tmp/hypr-windows.json | head -1)
+GHOSTTY_SHELL_ADDR=$(jq -r '.[] | select(.class == "com.mitchellh.ghostty") | .address' /tmp/hypr-windows.json | head -2 | tail -1)
+THUNDERBIRD_ADDR=$(jq -r '.[] | select(.class == "org.mozilla.Thunderbird") | .address' /tmp/hypr-windows.json | head -1)
+DISCORD_ADDR=$(jq -r '.[] | select(.class == "chrome-discord.com__channels_@me-Default") | .address' /tmp/hypr-windows.json | head -1)
+NOTION_ADDR=$(jq -r '.[] | select(.class == "chrome-notion.so__-Default") | .address' /tmp/hypr-windows.json | head -1)
+NOTION_CAL_ADDR=$(jq -r '.[] | select(.class == "chrome-calendar.notion.so__-Default") | .address' /tmp/hypr-windows.json | head -1)
+STEAM_ADDR=$(jq -r '.[] | select(.class == "steam") | .address' /tmp/hypr-windows.json | head -1)
+SPOTIFY_ADDR=$(jq -r '.[] | select(.class == "spotify") | .address' /tmp/hypr-windows.json | head -1)
+
 log "Chromium: $CHROMIUM_ADDR"
-
-GHOSTTY_NVIM_ADDR=$(launch "ghostty +new-window -e bash -lc 'cd /home/joshkosh && nvim'")
 log "Ghostty nvim: $GHOSTTY_NVIM_ADDR"
-
-GHOSTTY_SHELL_ADDR=$(launch "ghostty +new-window -e bash -lc 'cd /home/joshkosh && exec bash'")
 log "Ghostty shell: $GHOSTTY_SHELL_ADDR"
-
-THUNDERBIRD_ADDR=$(launch "thunderbird")
 log "Thunderbird: $THUNDERBIRD_ADDR"
-
-DISCORD_ADDR=$(launch "gtk-launch Discord")
 log "Discord: $DISCORD_ADDR"
-
-NOTION_ADDR=$(launch "gtk-launch Notion")
 log "Notion: $NOTION_ADDR"
-
-NOTION_CAL_ADDR=$(launch "gtk-launch Notion-Calendar")
 log "Notion Calendar: $NOTION_CAL_ADDR"
-
-STEAM_ADDR=$(launch "steam -gamepadui")
 log "Steam: $STEAM_ADDR"
-
-SPOTIFY_ADDR=$(launch "spotify")
 log "Spotify: $SPOTIFY_ADDR"
 
 log "Moving all windows to target workspaces..."
