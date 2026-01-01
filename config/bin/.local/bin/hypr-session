@@ -3,28 +3,64 @@ set -euo pipefail
 
 h() { hyprctl dispatch "$@"; }
 
+wait_for_window() {
+    local class="$1"
+    local timeout="${2:-5}"
+    local start=$(date +%s)
+    while ! hyprctl clients -j | jq -e ".[] | select(.class == \"$class\")" >/dev/null 2>&1; do
+        if [ $(($(date +%s) - start)) -gt "$timeout" ]; then
+            echo "Timeout waiting for $class" >&2
+            return 1
+        fi
+        sleep 0.1
+    done
+}
+
 h workspace 1
 
 h exec "chromium --new-window"
-h layoutmsg preselect l
+wait_for_window "chromium"
 
 h exec "ghostty +new-window -e bash -lc 'cd \"$HOME\" && nvim'"
-h layoutmsg preselect r
+wait_for_window "com.mitchellh.ghostty"
 
 h exec "ghostty +new-window -e bash -lc 'cd \"$HOME\" && exec bash'"
+wait_for_window "com.mitchellh.ghostty"
 
 h workspace 2
 h exec "thunderbird"
+wait_for_window "org.mozilla.Thunderbird"
 
 h workspace 3
 h exec "gtk-launch Discord"
+wait_for_window "chrome-discord.com"
+
 h exec "gtk-launch Notion"
+wait_for_window "chrome-notion.so"
+
 h exec "gtk-launch Notion-Calendar"
+wait_for_window "chrome-calendar.notion.so"
 
 h workspace 4
 h exec "steam -gamepadui"
+wait_for_window "steam"
 
 h workspace 5
 h exec "spotify"
+wait_for_window "spotify"
+
+h movetoworkspacesilent 1,class:(chromium)
+h movetoworkspacesilent 1,class:(com.mitchellh.ghostty)
+h movetoworkspacesilent 2,class:(org.mozilla.Thunderbird)
+h movetoworkspacesilent 3,class:(chrome-discord.com)
+h movetoworkspacesilent 3,class:(chrome-notion.so)
+h movetoworkspacesilent 3,class:(chrome-calendar.notion.so)
+h movetoworkspacesilent 4,class:(steam)
+h movetoworkspacesilent 5,class:(spotify)
+
+h workspace 1
+h layoutmsg preselect l
+h layoutmsg preselect r
+h layoutmsg preselect d
 
 h workspace 3
