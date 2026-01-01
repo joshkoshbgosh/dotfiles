@@ -9,59 +9,56 @@ log "=== Starting hypr-session ==="
 
 h() { hyprctl dispatch "$@" >> "$LOGFILE" 2>&1; }
 
-wait_for_window() {
-    local class="$1"
-    local timeout="${2:-5}"
-    log "Waiting for window with class: $class (timeout: ${timeout}s)"
-    local start=$(date +%s)
-    while ! hyprctl clients -j 2>> "$LOGFILE" | jq -e ".[] | select(.class == \"$class\")" >/dev/null 2>&1; do
-        if [ $(($(date +%s) - start)) -gt "$timeout" ]; then
-            log "ERROR: Timeout waiting for $class"
-            return 1
-        fi
-        sleep 0.1
-    done
-    log "Found window with class: $class"
+launch() {
+    local cmd="$1"
+    log "Launching: $cmd"
+    h exec "$cmd"
+    sleep 0.2
+    hyprctl clients -j | jq -r '.[] | .address' | tail -1
 }
 
-log "Workspace 1: Launching chromium"
-h exec "[workspace 1 silent] chromium --new-window"
-wait_for_window "chromium" || log "WARNING: chromium window not found"
+log "Launching all apps..."
+CHROMIUM_ADDR=$(launch "chromium --new-window")
+log "Chromium: $CHROMIUM_ADDR"
 
-log "Workspace 1: Launching nvim ghostty"
-h exec "[workspace 1 silent] ghostty +new-window -e bash -lc 'cd /home/joshkosh && nvim'"
-wait_for_window "com.mitchellh.ghostty" || log "WARNING: nvim ghostty window not found"
+GHOSTTY_NVIM_ADDR=$(launch "ghostty +new-window -e bash -lc 'cd /home/joshkosh && nvim'")
+log "Ghostty nvim: $GHOSTTY_NVIM_ADDR"
 
-log "Workspace 1: Launching shell ghostty"
-h exec "[workspace 1 silent] ghostty +new-window -e bash -lc 'cd /home/joshkosh && exec bash'"
-wait_for_window "com.mitchellh.ghostty" || log "WARNING: shell ghostty window not found"
+GHOSTTY_SHELL_ADDR=$(launch "ghostty +new-window -e bash -lc 'cd /home/joshkosh && exec bash'")
+log "Ghostty shell: $GHOSTTY_SHELL_ADDR"
 
-log "Workspace 2: Launching thunderbird"
-h exec "[workspace 2 silent] thunderbird"
-wait_for_window "org.mozilla.Thunderbird" || log "WARNING: thunderbird window not found"
+THUNDERBIRD_ADDR=$(launch "thunderbird")
+log "Thunderbird: $THUNDERBIRD_ADDR"
 
-log "Workspace 3: Launching discord"
-h exec "[workspace 3 silent] gtk-launch Discord"
-wait_for_window "chrome-discord.com__channels_@me-Default" || log "WARNING: discord window not found"
+DISCORD_ADDR=$(launch "gtk-launch Discord")
+log "Discord: $DISCORD_ADDR"
 
-log "Workspace 3: Launching notion"
-h exec "[workspace 3 silent] gtk-launch Notion"
-wait_for_window "chrome-notion.so__-Default" || log "WARNING: notion window not found"
+NOTION_ADDR=$(launch "gtk-launch Notion")
+log "Notion: $NOTION_ADDR"
 
-log "Workspace 3: Launching notion-calendar"
-h exec "[workspace 3 silent] gtk-launch Notion-Calendar"
-wait_for_window "chrome-calendar.notion.so__-Default" || log "WARNING: notion-calendar window not found"
+NOTION_CAL_ADDR=$(launch "gtk-launch Notion-Calendar")
+log "Notion Calendar: $NOTION_CAL_ADDR"
 
-log "Workspace 4: Launching steam"
-h exec "[workspace 4 silent] steam -gamepadui"
-wait_for_window "steam" || log "WARNING: steam window not found"
+STEAM_ADDR=$(launch "steam -gamepadui")
+log "Steam: $STEAM_ADDR"
 
-log "Workspace 5: Launching spotify"
-h exec "[workspace 5 silent] spotify"
-wait_for_window "spotify" || log "WARNING: spotify window not found"
+SPOTIFY_ADDR=$(launch "spotify")
+log "Spotify: $SPOTIFY_ADDR"
 
-log "=== Final window state ==="
-log "All windows:"
+log "Moving all windows to target workspaces..."
+hyprctl --batch "
+    dispatch movetoworkspacesilent 1,address:$CHROMIUM_ADDR
+    dispatch movetoworkspacesilent 1,address:$GHOSTTY_NVIM_ADDR
+    dispatch movetoworkspacesilent 1,address:$GHOSTTY_SHELL_ADDR
+    dispatch movetoworkspacesilent 2,address:$THUNDERBIRD_ADDR
+    dispatch movetoworkspacesilent 3,address:$DISCORD_ADDR
+    dispatch movetoworkspacesilent 3,address:$NOTION_ADDR
+    dispatch movetoworkspacesilent 3,address:$NOTION_CAL_ADDR
+    dispatch movetoworkspacesilent 4,address:$STEAM_ADDR
+    dispatch movetoworkspacesilent 5,address:$SPOTIFY_ADDR
+" >> "$LOGFILE" 2>&1
+
+log "Final window state:"
 hyprctl clients -j 2>> "$LOGFILE" | jq -r '.[] | "  \(.workspace.id): \(.class) - \(.title)"' >> "$LOGFILE"
 
 log "Switching to workspace 3 (Notion)"
