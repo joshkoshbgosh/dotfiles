@@ -30,7 +30,6 @@ stow -D -t ~ <package>  # remove symlinks
 ## Current Backlog
 - look into omarchy's webapp launching system
 - Reverse/smooth scrolling
-- Workspace setup (See 'Workspace plan' section)
 - Learn / adapt system ergonomics (floating windows, keybindings) 
 - Bitwarden
 - LocalSend
