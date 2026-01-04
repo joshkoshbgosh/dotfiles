@@ -33,7 +33,6 @@ stow -D -t ~ <package>  # remove symlinks
 - Learn / adapt system ergonomics (floating windows, keybindings) 
 - Bitwarden
 - LocalSend
-- hyprwhispr
 - Setup “oh my opencode”.
 - Setup memento MCP server with opencode for long-term memory + share across PC/Mac.
 - Explore feasible ways to respond via phone to agents blocked on my input.
