@@ -13,7 +13,7 @@ wait_for_class() {
     local start=$(date +%s)
     while ! hyprctl clients -j | jq -e ".[] | select(.class == \"$class\")" >/dev/null 2>&1; do
         [ $(($(date +%s) - start)) -gt "$timeout" ] && return 1
-        sleep 0.5
+        sleep 2
     done
 }
 
@@ -24,7 +24,7 @@ switch_workspace() {
         h "togglespecialworkspace $name"
     else
         h "workspace $workspace"
-        sleep 0.1
+        sleep 2
     fi
 }
 
@@ -48,35 +48,36 @@ process_workspace() {
     done
 }
 
-SESSION_DEFAULT_TIMEOUT=60
+SESSION_DEFAULT_TIMEOUT=120
 
 WORKSPACE_1_APPS=(
-  "chromium|chromium|chromium --new-window||10"
-  "ghostty-shell|com.mitchellh.ghostty|ghostty --title=shell -e bash||"
-  "ghostty-nvim|com.mitchellh.ghostty|ghostty --title=nvim -e nvim -c 'cd /home/joshkosh'||"
+  "chromium|chromium|chromium --new-window|"
+  "ghostty-shell|com.mitchellh.ghostty|ghostty --title=shell -e bash|"
+  "ghostty-nvim|com.mitchellh.ghostty|ghostty --title=nvim -e nvim -c 'cd /home/joshkosh'|"
 )
 
 WORKSPACE_2_APPS=(
-  "thunderbird|org.mozilla.Thunderbird|thunderbird||30"
+  "thunderbird|org.mozilla.Thunderbird|thunderbird|"
 )
 
 WORKSPACE_3_APPS=(
-  "discord|chrome-discord.com__channels_@me-Default|gtk-launch Discord||60"
-  "notion|chrome-notion.so__-Default|gtk-launch Notion|||60"
-  "notion-calendar|chrome-calendar.notion.so__-Default|gtk-launch Notion-Calendar||60"
+  "notion|chrome-notion.so__-Default|gtk-launch Notion|"
+  "notion-calendar|chrome-calendar.notion.so__-Default|gtk-launch Notion-Calendar|"
 )
 
 WORKSPACE_4_APPS=(
-  "steam|steam|steam||120"
+  "steam|steam|steam|480"
 )
 
 WORKSPACE_5_APPS=(
-  "nvim-dotfiles|com.mitchellh.ghostty|ghostty --title=nvim-dotfiles -e nvim -c 'cd ~/Work/dotfiles'||"
-  "opencode|com.mitchellh.ghostty|ghostty --title=opencode -e bash -c 'cd ~/Work/dotfiles && opencode'||"
+  "nvim-dotfiles|com.mitchellh.ghostty|ghostty --title=nvim-dotfiles -e nvim -c 'cd ~/Work/dotfiles'|"
+  "opencode|com.mitchellh.ghostty|ghostty --title=opencode -e bash -c 'cd ~/Work/dotfiles && opencode'|"
 )
 
 WORKSPACE_SCRATCHPAD_APPS=(
-  "spotify|spotify|spotify||30"
+  "discord|chrome-discord.com__channels_@me-Default|gtk-launch Discord|"
+  "scratchpad-chromium|chromium|chromium --new-window --start-maximized|"
+  "spotify|spotify|spotify|"
 )
 
 log "=== Starting hypr-session ==="
