@@ -17,62 +17,43 @@ wait_for_class() {
     done
 }
 
-get_address() {
-    hyprctl clients -j | jq -r ".[] | select(.class == \"$1\") | .address" | head -1
-}
-
-get_workspace() {
-    hyprctl clients -j | jq -r ".[] | select(.class == \"$1\") | .workspace.name" | head -1
-}
-
-set_split() {
-    h layoutmsg dwindle:preset "$1"
-}
-
-move_to_workspace() {
-    local class="$1" target_ws="$2"
-    local addr=$(get_address "$class")
-    local current_ws=$(get_workspace "$class")
-    
-    if [ -z "$addr" ]; then
-        error "$class address not found"
-        return 1
-    fi
-    
-    if [ "$current_ws" != "$target_ws" ] && [ "$current_ws" != "special:scratchpad" ]; then
-        log "Moving $class from $current_ws to $target_ws"
-        h movetoworkspacesilent "$target_ws,address:$addr"
+switch_workspace() {
+    local workspace="$1"
+    if [[ "$workspace" == special:* ]]; then
+        local name="${workspace#special:}"
+        h "togglespecialworkspace $name"
+    else
+        h "workspace $workspace"
+        sleep 0.1
     fi
 }
 
 process_workspace() {
     local workspace="$1"; shift
     local apps=("$@")
-    
+
+    switch_workspace "$workspace"
+
     for app in "${apps[@]}"; do
-        IFS='|' read -r name class cmd split timeout <<< "$app"
+        IFS='|' read -r name class cmd timeout <<< "$app"
         timeout="${timeout:-$SESSION_DEFAULT_TIMEOUT}"
-        
-        [ -n "$split" ] && set_split "$split"
-        
+
         log "Launching $name in workspace $workspace"
-        h exec "[workspace $workspace silent] $cmd"
-        
+        h exec "$cmd"
+
         if ! wait_for_class "$class" "$timeout"; then
             error "$name ($class) timeout"
             continue
         fi
-        
-        move_to_workspace "$class" "$workspace"
     done
 }
 
-SESSION_DEFAULT_TIMEOUT=30
+SESSION_DEFAULT_TIMEOUT=60
 
 WORKSPACE_1_APPS=(
-  "chromium|chromium|chromium --new-window|H|10"
-  "ghostty-nvim|com.mitchellh.ghostty|ghostty --title=nvim -e nvim -c 'cd /home/joshkosh'|V|"
+  "chromium|chromium|chromium --new-window||10"
   "ghostty-shell|com.mitchellh.ghostty|ghostty --title=shell -e bash||"
+  "ghostty-nvim|com.mitchellh.ghostty|ghostty --title=nvim -e nvim -c 'cd /home/joshkosh'||"
 )
 
 WORKSPACE_2_APPS=(
@@ -81,16 +62,17 @@ WORKSPACE_2_APPS=(
 
 WORKSPACE_3_APPS=(
   "discord|chrome-discord.com__channels_@me-Default|gtk-launch Discord||60"
-  "notion|chrome-notion.so__-Default|gtk-launch Notion||60"
+  "notion|chrome-notion.so__-Default|gtk-launch Notion|||60"
   "notion-calendar|chrome-calendar.notion.so__-Default|gtk-launch Notion-Calendar||60"
 )
 
 WORKSPACE_4_APPS=(
-  "steam|steam|steam -gamepadui||120"
+  "steam|steam|steam||120"
 )
 
 WORKSPACE_5_APPS=(
-  "spotify|spotify|spotify||30"
+  "nvim-dotfiles|com.mitchellh.ghostty|ghostty --title=nvim-dotfiles -e nvim -c 'cd ~/Work/dotfiles'||"
+  "opencode|com.mitchellh.ghostty|ghostty --title=opencode -e bash -c 'cd ~/Work/dotfiles && opencode'||"
 )
 
 WORKSPACE_SCRATCHPAD_APPS=(
@@ -104,5 +86,6 @@ process_workspace 3 "${WORKSPACE_3_APPS[@]}"
 process_workspace 4 "${WORKSPACE_4_APPS[@]}"
 process_workspace 5 "${WORKSPACE_5_APPS[@]}"
 process_workspace "special:scratchpad" "${WORKSPACE_SCRATCHPAD_APPS[@]}"
-h workspace 3
+h "workspace 3"
+hyprctl dispatch togglespecialworkspace scratchpad
 log "=== hypr-session complete ==="
