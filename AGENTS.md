@@ -1,4 +1,4 @@
-# Agents.md
+# AGENTS.md
 
 My dotfiles repo, based on omarchy, and using stow
 
@@ -30,7 +30,7 @@ stow -D -t ~ <package>  # remove symlinks
 ## Current Backlog
 - look into omarchy's webapp launching system
 - Reverse/smooth scrolling
-- Workspace setup (See 'Worspace plan' section)
+- Workspace setup (See 'Workspace plan' section)
 - Learn / adapt system ergonomics (floating windows, keybindings) 
 - Bitwarden
 - LocalSend
@@ -43,6 +43,8 @@ stow -D -t ~ <package>  # remove symlinks
 - niri experiment
 - Change lockscreen / idle experience
 - Figure out efficient ways to do the most common/important things as a general user + software developer.
+- Setup jj
+- setup claude code
 - Setup Steam Remote Play
 - Fix my storage setup
 
