@@ -45,6 +45,7 @@ stow -D -t ~ <package>  # remove symlinks
 - Figure out efficient ways to do the most common/important things as a general user + software developer.
 - Setup jj
 - setup claude code
+- setup dcli (declarative arch)
 - Setup Steam Remote Play
 - Fix my storage setup
 
