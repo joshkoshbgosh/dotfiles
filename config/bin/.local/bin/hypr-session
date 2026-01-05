@@ -17,6 +17,16 @@ wait_for_class() {
     done
 }
 
+set_split() {
+    local split="$1"
+    case "$split" in
+        right)  hyprctl dispatch layoutmsg preselect r ;;
+        left)   hyprctl dispatch layoutmsg preselect l ;;
+        top)    hyprctl dispatch layoutmsg preselect t ;;
+        bottom) hyprctl dispatch layoutmsg preselect b ;;
+    esac
+}
+
 switch_workspace() {
     local workspace="$1"
     if [[ "$workspace" == special:* ]]; then
@@ -24,8 +34,9 @@ switch_workspace() {
         h "togglespecialworkspace $name"
     else
         h "workspace $workspace"
-        sleep 2
     fi
+    hyprctl dispatch layoutmsg preselect clear
+    sleep 2
 }
 
 process_workspace() {
@@ -35,11 +46,17 @@ process_workspace() {
     switch_workspace "$workspace"
 
     for app in "${apps[@]}"; do
-        IFS='|' read -r name class cmd timeout <<< "$app"
+        IFS='|' read -r name class cmd split timeout <<< "$app"
         timeout="${timeout:-$SESSION_DEFAULT_TIMEOUT}"
 
-        log "Launching $name in workspace $workspace"
-        h exec "$cmd"
+        log "Launching $name in workspace $workspace (split=$split)"
+
+        if [ -n "$split" ]; then
+            set_split "$split"
+            sleep 2
+        fi
+
+        hyprctl dispatch exec -- "$cmd"
 
         if ! wait_for_class "$class" "$timeout"; then
             error "$name ($class) timeout"
@@ -51,33 +68,33 @@ process_workspace() {
 SESSION_DEFAULT_TIMEOUT=120
 
 WORKSPACE_1_APPS=(
-  "chromium|chromium|chromium --new-window|"
-  "ghostty-shell|com.mitchellh.ghostty|ghostty --title=shell -e bash|"
-  "ghostty-nvim|com.mitchellh.ghostty|ghostty --title=nvim -e nvim -c 'cd /home/joshkosh'|"
+  "chromium|chromium|chromium --new-window||"
+  "shell|com.mitchellh.ghostty|ghostty -e bash|right|"
+  "nvim|com.mitchellh.ghostty|ghostty -e nvim -c 'cd /home/joshkosh'|bottom|"
 )
 
 WORKSPACE_2_APPS=(
-  "thunderbird|org.mozilla.Thunderbird|thunderbird|"
+  "thunderbird|org.mozilla.Thunderbird|thunderbird||"
 )
 
 WORKSPACE_3_APPS=(
-  "notion|chrome-notion.so__-Default|gtk-launch Notion|"
-  "notion-calendar|chrome-calendar.notion.so__-Default|gtk-launch Notion-Calendar|"
+  "notion|chrome-notion.so__-Default|gtk-launch Notion||"
+  "notion-calendar|chrome-calendar.notion.so__-Default|gtk-launch Notion-Calendar|bottom|"
 )
 
 WORKSPACE_4_APPS=(
-  "steam|steam|steam|480"
+  "steam|steam|steam||120"
 )
 
 WORKSPACE_5_APPS=(
-  "nvim-dotfiles|com.mitchellh.ghostty|ghostty --title=nvim-dotfiles -e nvim -c 'cd ~/Work/dotfiles'|"
-  "opencode|com.mitchellh.ghostty|ghostty --title=opencode -e bash -c 'cd ~/Work/dotfiles && opencode'|"
+  "nvim-dotfiles|com.mitchellh.ghostty|ghostty --title=nvim-dotfiles -e nvim -c 'cd ~/Work/dotfiles'||"
+  "opencode|com.mitchellh.ghostty|ghostty --title=opencode -e bash -c 'cd ~/Work/dotfiles && opencode'||"
 )
 
 WORKSPACE_SCRATCHPAD_APPS=(
-  "discord|chrome-discord.com__channels_@me-Default|gtk-launch Discord|"
-  "scratchpad-chromium|chromium|chromium --new-window --start-maximized|"
-  "spotify|spotify|spotify|"
+  "discord|chrome-discord.com__channels_@me-Default|gtk-launch Discord||"
+  "scratchpad-chromium|chromium|chromium --new-window --start-maximized||"
+  "spotify|spotify|spotify||"
 )
 
 log "=== Starting hypr-session ==="
