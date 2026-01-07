@@ -46,6 +46,11 @@ stow -D -t ~ <package>  # remove symlinks
 - setup dcli (declarative arch)
 - Setup Steam Remote Play
 - Fix my storage setup
+- Configure auto shutdown after 24h of inactivity
+- Look into filtering opencode sidebar modified files by uncommitted changes
+- Look into adding edit option to opencode file edit request (check twitter)
+- Check corrupted opencode session backup file for anything valuable
+- Look into git push opencode permission failure
 
 ## Quick Commands
 ```bash
