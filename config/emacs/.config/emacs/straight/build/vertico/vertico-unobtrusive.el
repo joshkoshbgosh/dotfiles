@@ -1,0 +1,1 @@
+/home/joshkosh/.config/emacs/straight/repos/vertico/extensions/vertico-unobtrusive.el

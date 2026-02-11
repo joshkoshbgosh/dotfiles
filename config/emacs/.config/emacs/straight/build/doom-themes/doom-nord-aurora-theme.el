@@ -1,0 +1,1 @@
+/home/joshkosh/.config/emacs/straight/repos/themes/themes/doom-nord-aurora-theme.el

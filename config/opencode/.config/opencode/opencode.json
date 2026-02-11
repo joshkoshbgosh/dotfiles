@@ -15,13 +15,21 @@
       "git log": "allow",
       "git show": "allow",
       "npm test": "allow",
+      "npm run build": "allow",
     },
 
     "edit": "ask",
-    "webfetch": "ask",
+    "webfetch": "allow",
     "external_directory": "ask",
     "doom_loop": "ask",
     "skill": "ask"
+  },
+  "mcp": {
+    "notion": {
+      "type": "remote",
+      "url": "https://mcp.notion.com/mcp",
+      "enabled": true,
+      "oauth": {}
+    }
   }
 }
-

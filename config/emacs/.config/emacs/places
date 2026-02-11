@@ -1,0 +1,13 @@
+;;; -*- coding: utf-8; mode: lisp-data -*-
+(("/home/joshkosh/Work/Init-to-Win-It/" . 749)
+ ("/home/joshkosh/Work/quantum/" . 346)
+ ("/home/joshkosh/Work/dotfiles/config/emacs/.config/emacs/early-init.el"
+  . 114)
+ ("/home/joshkosh/Work/dotfiles/config/emacs/.config/emacs/init.el"
+  . 11151)
+ ("/home/joshkosh/Work/dotfiles/" . 496)
+ ("/home/joshkosh/.config/emacs/.cache/treemacs-persist" . 50)
+ ("/usr/share/emacs/30.2/lisp/loaddefs.el.gz" . 427606)
+ ("/usr/share/emacs/30.2/lisp/custom.el.gz" . 54775)
+ ("/home/joshkosh/Work/dotfiles/config/emacs/.config/emacs/.emacs.desktop"
+  . 8818))

@@ -1,0 +1,1 @@
+/home/joshkosh/.config/emacs/straight/repos/evil-collection/modes/pdf/evil-collection-pdf.el

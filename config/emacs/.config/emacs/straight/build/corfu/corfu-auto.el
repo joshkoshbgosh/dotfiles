@@ -1,0 +1,1 @@
+/home/joshkosh/.config/emacs/straight/repos/corfu/extensions/corfu-auto.el

@@ -1,0 +1,1 @@
+/home/joshkosh/.config/emacs/straight/repos/evil-collection/modes/trashed/evil-collection-trashed.el

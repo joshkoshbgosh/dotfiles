@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/joshkosh/.config/emacs/straight/build/vterm/build/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

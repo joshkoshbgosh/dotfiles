@@ -1,0 +1,1 @@
+/home/joshkosh/.config/emacs/straight/repos/evil-collection/modes/p-search/evil-collection-p-search.el

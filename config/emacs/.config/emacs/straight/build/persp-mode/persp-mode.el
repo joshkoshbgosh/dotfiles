@@ -1,0 +1,1 @@
+/home/joshkosh/.config/emacs/straight/repos/persp-mode.el/persp-mode.el

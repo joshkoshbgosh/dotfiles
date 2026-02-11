@@ -1,0 +1,1 @@
+/home/joshkosh/.config/emacs/straight/repos/treemacs/src/elisp/treemacs-annotations.el

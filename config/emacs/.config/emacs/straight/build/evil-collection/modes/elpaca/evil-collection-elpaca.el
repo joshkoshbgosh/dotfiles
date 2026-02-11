@@ -1,0 +1,1 @@
+/home/joshkosh/.config/emacs/straight/repos/evil-collection/modes/elpaca/evil-collection-elpaca.el

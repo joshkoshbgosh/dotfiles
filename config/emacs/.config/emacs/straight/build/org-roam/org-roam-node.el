@@ -1,0 +1,1 @@
+/home/joshkosh/.config/emacs/straight/repos/org-roam/org-roam-node.el
