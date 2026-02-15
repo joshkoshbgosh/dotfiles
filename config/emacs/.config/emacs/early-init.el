@@ -13,4 +13,3 @@
 
 ;; Native compilation warnings can be noisy on some setups
 ;; (setq native-comp-async-report-warnings-errors 'silent)
-

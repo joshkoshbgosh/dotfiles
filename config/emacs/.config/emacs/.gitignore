@@ -1,0 +1,19 @@
+# Emacs generated files - do not commit
+.cache/
+eln-cache/
+straight/
+auto-save-list/
+persp/
+tree-sitter/
+
+# Session/state files
+.emacs.desktop
+.emacs.desktop.lock
+history
+places
+projects.eld
+recentf
+
+# Compiled files
+*.elc
+*.eln

@@ -1,1 +1,0 @@
-/home/joshkosh/.config/emacs/straight/repos/emacsql/emacsql-pg.el

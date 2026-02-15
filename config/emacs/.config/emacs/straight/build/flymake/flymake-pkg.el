@@ -1,1 +1,0 @@
-/home/joshkosh/.config/emacs/straight/repos/flymake/flymake-pkg.el

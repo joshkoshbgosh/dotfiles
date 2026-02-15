@@ -1,1 +1,0 @@
-/home/joshkosh/.config/emacs/straight/repos/evil-collection/modes/help/evil-collection-help.el

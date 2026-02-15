@@ -1,1 +1,0 @@
-/home/joshkosh/.config/emacs/straight/repos/org-appear/org-appear.el

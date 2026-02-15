@@ -101,7 +101,7 @@
     :prefix "SPC"
     :global-prefix "C-SPC")
 
-  ;; A tiny "Doom-ish" starter map (we’ll evolve this)
+  ;; A tiny "Doom-ish" starter map (we'll evolve this)
   (my/leader
     "SPC" '(execute-extended-command :which-key "M-x")
     "f"   '(:ignore t :which-key "files")
@@ -116,7 +116,7 @@
     "w d" '(delete-window :which-key "delete window")))
 
 ;; ------------------------------
-;; Completion / search stack (fast “telescope-like”)
+;; Completion / search stack (fast "telescope-like")
 ;; ------------------------------
 (use-package vertico
   :demand t
@@ -239,7 +239,7 @@
     ;; Ensure Treemacs is showing ROOT
     (treemacs-add-and-display-current-project-exclusively)))
 
-;; The helper treemacs uses for “current project” is project.el-aware
+;; The helper treemacs uses for "current project" is project.el-aware
 (setq treemacs-project-follow-cleanup t)
 
 (with-eval-after-load 'general
@@ -276,11 +276,22 @@
   (add-to-list 'completion-at-point-functions #'cape-file)
   (add-to-list 'completion-at-point-functions #'cape-dabbrev))
 
+;; Tree-sitter grammar sources (recipes)
+(setq treesit-language-source-alist
+      '((typescript "https://github.com/tree-sitter/tree-sitter-typescript" "master" "typescript/src")
+        (tsx        "https://github.com/tree-sitter/tree-sitter-typescript" "master" "tsx/src")))
+
 (use-package eglot
   :commands (eglot eglot-ensure)
   :init
   ;; Auto-start LSP for programming modes
   (add-hook 'prog-mode-hook #'eglot-ensure)
+  ;; Associate TS files with proper major modes
+  (add-to-list 'auto-mode-alist '("\\.ts\\'"  . typescript-ts-mode))
+  (add-to-list 'auto-mode-alist '("\\.tsx\\'" . tsx-ts-mode))
+  (add-to-list 'auto-mode-alist '("\\.js\\'"  . js-ts-mode))
+  (add-to-list 'auto-mode-alist '("\\.jsx\\'" . js-ts-mode))
+
   :config
   (setq eglot-autoshutdown t
         eglot-send-changes-idle-time 0.2)

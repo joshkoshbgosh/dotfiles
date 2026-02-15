@@ -1,1 +1,0 @@
-/home/joshkosh/.config/emacs/straight/repos/themes/themes/doom-moonlight-theme.el

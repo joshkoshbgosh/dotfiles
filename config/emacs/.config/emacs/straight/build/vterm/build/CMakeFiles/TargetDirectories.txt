@@ -1,4 +1,0 @@
-/home/joshkosh/.config/emacs/straight/build/vterm/build/CMakeFiles/vterm-module.dir
-/home/joshkosh/.config/emacs/straight/build/vterm/build/CMakeFiles/run.dir
-/home/joshkosh/.config/emacs/straight/build/vterm/build/CMakeFiles/edit_cache.dir
-/home/joshkosh/.config/emacs/straight/build/vterm/build/CMakeFiles/rebuild_cache.dir
