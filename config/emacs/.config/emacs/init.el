@@ -58,7 +58,13 @@
   :config
   (save-place-mode 1)
   (savehist-mode 1)
-  (recentf-mode 1))
+  (recentf-mode 1)
+  ;; Enable Emacs server for MCP integration
+  (server-start)
+  ;; Line numbers: absolute current, relative others
+  (setq display-line-numbers-type 'relative
+        display-line-numbers-current-absolute t)
+  (global-display-line-numbers-mode 1))
 
 ;; ------------------------------
 ;; which-key: discoverability
@@ -174,9 +180,15 @@
   :demand t
   :init
   (setq persp-autosave-mode t
+        persp-auto-resume-time 0
+        persp-save-window-conf t
         persp-save-dir (expand-file-name "persp/" user-emacs-directory))
   :config
   (persp-mode 1)
+  ;; Load saved perspectives if they exist
+  (let ((state-file (expand-file-name "persp-auto-save" persp-save-dir)))
+    (when (file-exists-p state-file)
+      (persp-load-state-from-file state-file)))
   (my/leader
     "TAB" '(:ignore t :which-key "workspace")
     "TAB TAB" '(persp-switch :which-key "switch")
@@ -187,7 +199,7 @@
 (defun my/workspace-switch-to-project ()
   "Pick a directory, treat it as a project, switch to a workspace for it."
   (interactive)
-  (let* ((dir (read-directory-name "Project dir: " (expand-file-name "~/Work/") nil t))
+  (let* ((dir (read-directory-name "Project dir: " my/current-workspace-dir nil t))
          (dir (file-name-as-directory (expand-file-name dir)))
          (name (file-name-nondirectory (directory-file-name dir)))
          (proj (project-current nil dir)))
@@ -210,25 +222,56 @@
     "p P" '(my/workspace-switch-to-project :which-key "project -> workspace")
     "p G" '(my/workspace-project-magit :which-key "project -> workspace -> magit")))
 
-;; Optional extra session restore (buffers/windows). persp already helps a lot.
-(setq desktop-path (list user-emacs-directory)
-      desktop-save t)
-(desktop-save-mode 1)
+;; Desktop save disabled - using persp-mode instead for workspace restoration
+;; (setq desktop-path (list user-emacs-directory)
+;;       desktop-save t)
+;; (desktop-save-mode 1)
 
 ;; ------------------------------
 ;; File tree
 ;; ------------------------------
 (use-package treemacs
+  :demand t
   :config
-  (setq treemacs-width 34)
+  (setq treemacs-width 34
+        treemacs-indentation 2)
+  ;; Disable line numbers in treemacs
+  (add-hook 'treemacs-mode-hook (lambda () (display-line-numbers-mode -1)) t)
   (my/leader "e" '(treemacs :which-key "file tree")))
 
 (use-package treemacs-evil :after (treemacs evil))
 
+(defvar my/workspace-dirs '("~/Workspace/" "~/Work/")
+  "List of directories to search for projects on different machines.")
+
+(defvar my/current-workspace-dir
+  (catch 'found
+    (dolist (dir my/workspace-dirs)
+      (when (file-directory-p dir)
+        (throw 'found dir)))
+    "~/Workspace/")
+  "Current workspace directory based on machine.")
+
 (defun my/project-root ()
-  "Return current project root, or nil if not in a project."
-  (when-let ((proj (project-current nil)))
-    (project-root proj)))
+  "Return current project root, or nil if not in a project.
+   Uses perspective name, buffers, or current directory to detect project."
+  (let ((persp (get-current-persp)))
+    (or
+     ;; 1. Try perspective name matching project directories (only if in a named perspective)
+     (when (and persp
+                (not (string= (persp-name persp) "none"))
+                (not (string= (persp-name persp) "main")))
+       (let* ((persp-name (persp-name persp))
+              (proj-dir (expand-file-name persp-name my/current-workspace-dir))
+              (git-dir (expand-file-name ".git" proj-dir)))
+         (when (file-directory-p git-dir)
+           proj-dir)))
+     ;; 2. Try project detection from current buffer
+     (when-let ((proj (project-current nil)))
+       (project-root proj))
+     ;; 3. Try finding project from default-directory
+     (when-let ((proj (project-current nil default-directory)))
+       (project-root proj)))))
 
 (defun my/treemacs-open-current-project ()
   "Open (or focus) Treemacs rooted at the current project."
@@ -239,12 +282,34 @@
     ;; Ensure Treemacs is showing ROOT
     (treemacs-add-and-display-current-project-exclusively)))
 
+(defun my/treemacs-refresh-for-current-project ()
+  "Refresh treemacs to show current project when switching perspectives."
+  ;; Always ensure treemacs is visible
+  (when (fboundp 'treemacs)
+    (treemacs))
+  ;; Then update to current project
+  (when-let ((root (my/project-root)))
+    (treemacs-add-and-display-current-project-exclusively)))
+
+(defvar my/treemacs-last-project nil
+  "Last project root shown in treemacs.")
+
+(defun my/treemacs-follow-project-on-file-open ()
+  "Auto-switch treemacs when opening files from different projects."
+  (when-let ((root (my/project-root)))
+    (unless (equal root my/treemacs-last-project)
+      (setq my/treemacs-last-project root)
+      (when (fboundp 'treemacs-get-local-buffer)
+        (treemacs-add-and-display-current-project-exclusively)))))
+
+;; Auto-update treemacs when opening files
+(add-hook 'find-file-hook #'my/treemacs-follow-project-on-file-open)
+
 ;; The helper treemacs uses for "current project" is project.el-aware
 (setq treemacs-project-follow-cleanup t)
 
 (with-eval-after-load 'general
   (my/leader
-    "p e" '(my/treemacs-open-current-project :which-key "treemacs (project)")
     "e"   '(treemacs :which-key "file tree")))
 
 ;; ------------------------------
@@ -276,16 +341,16 @@
   (add-to-list 'completion-at-point-functions #'cape-file)
   (add-to-list 'completion-at-point-functions #'cape-dabbrev))
 
-;; Tree-sitter grammar sources (recipes)
-(setq treesit-language-source-alist
-      '((typescript "https://github.com/tree-sitter/tree-sitter-typescript" "master" "typescript/src")
-        (tsx        "https://github.com/tree-sitter/tree-sitter-typescript" "master" "tsx/src")))
+;; Tree-sitter grammar sources (defer loading to avoid startup crash)
+;; (setq treesit-language-source-alist
+;;       '((typescript "https://github.com/tree-sitter/tree-sitter-typescript" "master" "typescript/src")
+;;         (tsx        "https://github.com/tree-sitter/tree-sitter-typescript" "master" "tsx/src")))
 
 (use-package eglot
   :commands (eglot eglot-ensure)
   :init
-  ;; Auto-start LSP for programming modes
-  (add-hook 'prog-mode-hook #'eglot-ensure)
+  ;; Auto-start LSP for programming modes - commented to avoid startup crash
+  ;; (add-hook 'prog-mode-hook #'eglot-ensure)
   ;; Associate TS files with proper major modes
   (add-to-list 'auto-mode-alist '("\\.ts\\'"  . typescript-ts-mode))
   (add-to-list 'auto-mode-alist '("\\.tsx\\'" . tsx-ts-mode))
@@ -295,6 +360,9 @@
   :config
   (setq eglot-autoshutdown t
         eglot-send-changes-idle-time 0.2)
+  ;; Use vtsls for TypeScript
+  (add-to-list 'eglot-server-programs
+               '((typescript-ts-mode tsx-ts-mode) . ("vtsls" "--stdio")))
   (my/leader
     "c"   '(:ignore t :which-key "code")
     "c a" '(eglot-code-actions :which-key "code actions")
@@ -390,11 +458,19 @@
   (interactive)
   (set-face-attribute 'default nil :height (- (face-attribute 'default :height) 10)))
 
+(defun my/toggle-fullscreen ()
+  "Toggle between full-screen and maximized window."
+  (interactive)
+  (if (frame-parameter nil 'fullscreen)
+      (set-frame-parameter nil 'fullscreen 'maximized)
+    (set-frame-parameter nil 'fullscreen 'fullboth)))
+
 (with-eval-after-load 'general
   (my/leader
     "t f"  '(set-frame-font :which-key "set font (prompt)")
     "t +"  '(my/font-bigger :which-key "font bigger")
-    "t -"  '(my/font-smaller :which-key "font smaller")))
+    "t -"  '(my/font-smaller :which-key "font smaller")
+    "t F"  '(my/toggle-fullscreen :which-key "toggle fullscreen")))
 
 ;; Bigger text + more breathing room
 (set-face-attribute 'default nil :family "JetBrains Mono" :height 160) ; 16pt-ish
@@ -417,14 +493,22 @@
   (setq modus-themes-bold-constructs t
         modus-themes-italic-constructs t
         modus-themes-mixed-fonts t
-        modus-themes-prompts '(bold intense))
-  )
+        modus-themes-prompts '(bold intense)))
 
 (use-package doom-themes
   :demand t
   :config
   (my/disable-all-themes)     ;; optional but avoids theme stacking
-  (load-theme 'doom-one t))
+  (load-theme 'doom-one t)
+  ;; Make line numbers more visible
+  (set-face-attribute 'line-number nil
+                      :foreground "#5c6370"
+                      :background 'unspecified
+                      :weight 'normal)
+  (set-face-attribute 'line-number-current-line nil
+                      :foreground "#abb2bf"
+                      :background "#3e4451"
+                      :weight 'bold))
 
 (use-package nerd-icons)
 (use-package doom-modeline
@@ -437,18 +521,3 @@
 (with-eval-after-load 'general
   (my/leader
     "t 0" '(my/disable-all-themes :which-key "disable themes")))
-(custom-set-variables
- ;; custom-set-variables was added by Custom.
- ;; If you edit it by hand, you could mess it up, so be careful.
- ;; Your init file should contain only one such instance.
- ;; If there is more than one, they won't work right.
- '(custom-safe-themes
-   '("aec7b55f2a13307a55517fdf08438863d694550565dee23181d2ebd973ebd6b8"
-     "0325a6b5eea7e5febae709dab35ec8648908af12cf2d2b569bedc8da0a3a81c1"
-     default)))
-(custom-set-faces
- ;; custom-set-faces was added by Custom.
- ;; If you edit it by hand, you could mess it up, so be careful.
- ;; Your init file should contain only one such instance.
- ;; If there is more than one, they won't work right.
- )

@@ -30,6 +30,11 @@
       "url": "https://mcp.notion.com/mcp",
       "enabled": true,
       "oauth": {}
+    },
+    "emacs": {
+      "type": "local",
+      "command": ["npx", "-y", "@keegancsmith/emacs-mcp-server"],
+      "enabled": true
     }
   }
 }
