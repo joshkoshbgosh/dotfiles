@@ -8,6 +8,14 @@
             (setq gc-cons-threshold (* 32 1024 1024)
                   gc-cons-percentage 0.2)))
 
+;; Fix for Wayland resize issues
+(setq inhibit-compacting-font-caches t)
+
+;; Force redraw on window configuration changes
+(add-hook 'window-configuration-change-hook
+          (lambda ()
+            (redraw-display)))
+
 
 ;; ------------------------------
 ;; straight.el bootstrap
