@@ -1,20 +1,42 @@
-;;; init.el --- Josh's Emacs config -*- lexical-binding: t; -*-
-
-;; ------------------------------
-;; Restore saner GC after startup
+;;;  startup
 ;; ------------------------------
 (add-hook 'emacs-startup-hook
           (lambda ()
             (setq gc-cons-threshold (* 32 1024 1024)
                   gc-cons-percentage 0.2)))
 
-;; Fix for Wayland resize issues
+;; Fix for Wayland resize issues in native GUI Emacs frames
 (setq inhibit-compacting-font-caches t)
 
-;; Force redraw on window configuration changes
-(add-hook 'window-configuration-change-hook
-          (lambda ()
-            (redraw-display)))
+;; NOTE: redraw-display on window-configuration-change-hook removed —
+;; it caused a redisplay feedback loop with dirvish preview windows,
+;; producing constant "wrong-type-argument number-or-marker-p nil" errors
+;; and severe navigation lag.
+
+;; Emacs 30.2 + libtree-sitter >= 0.25 are mutually incompatible on predicates:
+;; libtree-sitter now requires a `?' suffix (`#match?'), but Emacs's C-side
+;; serializer/runtime still uses the bare form (`#match').  Neither end accepts
+;; the other's spelling, and there's no in-Lisp way to bridge them.  As a
+;; degraded workaround, strip top-level patterns that use :match/:equal/:pred
+;; before compiling.  Built-in modes that use these (typescript-ts-mode's
+;; `constant' / `number' features) always pair the predicate-bearing pattern
+;; with non-predicate alternatives, so other highlighting still works; only
+;; the predicate-gated cases (e.g. ALL_CAPS-as-constant, NaN/Infinity) are lost.
+;; Must run before any package (e.g. persp-mode) restores .ts/.tsx buffers,
+;; which would otherwise compile and cache the broken queries.
+(require 'cl-lib)
+(defun my/treesit-pattern-has-predicate-p (form)
+  (cond ((memq form '(:match :equal :pred)) t)
+        ((consp form)
+         (or (my/treesit-pattern-has-predicate-p (car form))
+             (my/treesit-pattern-has-predicate-p (cdr form))))))
+(define-advice treesit-query-compile
+    (:around (orig lang query &optional eager) my/strip-broken-predicates)
+  (let ((q query))
+    (when (and (consp q) (not (stringp q)))
+      (let ((cleaned (cl-remove-if #'my/treesit-pattern-has-predicate-p q)))
+        (when cleaned (setq q cleaned))))
+    (funcall orig lang q eager)))
 
 
 ;; ------------------------------
@@ -50,6 +72,14 @@
   (straight-pull-all)
   (straight-check-all))
 
+(defun my/switch-theme (theme)
+  "Disable all active themes then load THEME cleanly."
+  (interactive
+   (list (intern (completing-read "Load theme: "
+                                  (mapcar #'symbol-name (custom-available-themes))))))
+  (mapc #'disable-theme custom-enabled-themes)
+  (load-theme theme t))
+
 ;; ------------------------------
 ;; Core QoL
 ;; ------------------------------
@@ -62,11 +92,33 @@
         scroll-conservatively 101
         scroll-margin 5
         use-short-answers t
+        use-dialog-box nil            ; never pop GTK dialogs, always use minibuffer
         confirm-kill-emacs 'y-or-n-p)
   :config
   (save-place-mode 1)
   (savehist-mode 1)
   (recentf-mode 1)
+  ;; Auto-revert buffers when files change on disk
+  (global-auto-revert-mode 1)
+  (setq auto-revert-interval 1
+        auto-revert-check-vc-info t
+        global-auto-revert-non-file-buffers t)
+  ;; Auto-save the actual file after idle (not #temp# files)
+  ;; save-silently suppresses the "Saving..." echo; auto-revert handles disk conflicts
+  (setq auto-save-visited-interval 2
+        save-silently t)
+  (auto-save-visited-mode 1)
+  ;; Ediff: use plain layout and always start from a non-side window.
+  ;; Side windows (like claude-code-ide) are not splittable; ediff calls
+  ;; split-window both on startup and when showing help (?), so we must
+  ;; redirect focus to a regular window before ediff touches the layout.
+  (setq ediff-window-setup-function #'ediff-setup-windows-plain
+        ediff-split-window-function #'split-window-horizontally)
+  (defun my/ediff-select-non-side-window (&rest _)
+    (when-let ((win (seq-find (lambda (w) (not (window-parameter w 'window-side)))
+                              (window-list))))
+      (select-window win)))
+  (advice-add 'ediff-setup-windows-plain :before #'my/ediff-select-non-side-window)
   ;; Enable Emacs server for MCP integration
   (server-start)
   ;; Line numbers: absolute current, relative others
@@ -81,7 +133,16 @@
   :demand t
   :config
   (which-key-mode 1)
-  (setq which-key-idle-delay 0.4))
+  (setq which-key-idle-delay 0.25
+        which-key-idle-secondary-delay 0.05
+        which-key-sort-order 'which-key-key-order
+        which-key-show-remaining-keys t))
+
+(use-package discover-my-major
+  :commands (discover-my-major))
+
+(use-package transient
+  :demand t)
 
 ;; ------------------------------
 ;; Evil (vim) + collections
@@ -103,31 +164,162 @@
   :config
   (evil-collection-init))
 
+(use-package evil-commentary
+  :after evil
+  :config (evil-commentary-mode 1))
+
 ;; ------------------------------
-;; Leader keys (SPC) via general
+;; Tabs (centaur-tabs) — LazyVim-style buffer tabs
+;; ------------------------------
+(use-package centaur-tabs
+  :demand t
+  :init
+  (setq centaur-tabs-style "bar"
+        centaur-tabs-height 32
+        centaur-tabs-set-icons t
+        centaur-tabs-icon-type 'nerd-icons
+        centaur-tabs-set-modified-marker t
+        centaur-tabs-modified-marker "●"
+        centaur-tabs-close-button "✕"
+        centaur-tabs-set-bar 'under
+        centaur-tabs-show-new-tab-button nil
+        centaur-tabs-set-close-button t)
+  :config
+  (centaur-tabs-mode 1)
+  ;; Group tabs by project.el
+  (defun my/centaur-tabs-project-group ()
+    "Group tabs by project.el root."
+    (list (let ((proj (project-current)))
+            (if proj
+                (file-name-nondirectory (directory-file-name (project-root proj)))
+              "Other"))))
+  (setq centaur-tabs-buffer-groups-function #'my/centaur-tabs-project-group)
+  ;; Only show file-visiting buffers; exclude special/terminal buffers
+  (defun my/centaur-tabs-buffer-list ()
+    "Return buffers to show as tabs — exclude special and terminal buffers."
+    (seq-filter
+     (lambda (b)
+       (let ((name (buffer-name b)))
+         (and (not (string-prefix-p "*" name))
+              (not (string-prefix-p " " name))
+              (not (with-current-buffer b
+                     (derived-mode-p 'vterm-mode 'magit-mode 'dired-mode))))))
+     (buffer-list)))
+  (setq centaur-tabs-buffer-list-function #'my/centaur-tabs-buffer-list)
+  ;; Cycle only within visible tabs (wrap around, don't jump to other windows)
+  (setq centaur-tabs-cycle-scope 'tabs)
+  ;; Color tab text based on git vc-state (matches diff-hl fringe colors)
+  (setq centaur-tabs-buffer-face-function
+        (lambda (buf)
+          (with-current-buffer buf
+            (when (and buffer-file-name
+                       (vc-registered buffer-file-name))
+              (pcase (vc-state buffer-file-name)
+                ('edited  'diff-hl-change)
+                ('added   'diff-hl-insert)
+                ('removed 'diff-hl-delete)
+                (_         nil)))))))
+
+;; ------------------------------
+;; Window visibility: dim inactive windows
+;; ------------------------------
+(use-package dimmer
+  :demand t
+  :config
+  (dimmer-mode 1)
+  (setq dimmer-fraction 0.15))
+
+;; ------------------------------
+;; Leader keys (M-;) via general
 ;; ------------------------------
 (use-package general
   :after evil
   :config
   (general-create-definer my/leader
-    :states '(normal visual motion)
+    :states '(normal visual motion emacs)
     :keymaps 'override
-    :prefix "SPC"
-    :global-prefix "C-SPC")
+    :prefix "M-;"
+    :global-prefix "C-M-;")
 
-  ;; A tiny "Doom-ish" starter map (we'll evolve this)
   (my/leader
-    "SPC" '(execute-extended-command :which-key "M-x")
+    ";" '(execute-extended-command :which-key "M-x")
     "f"   '(:ignore t :which-key "files")
-    "f f" '(find-file :which-key "find file")
+    "f f" '(my/find-file-prompt :which-key "find file")
     "f r" '(recentf-open-files :which-key "recent files")
     "b"   '(:ignore t :which-key "buffers")
     "b b" '(consult-buffer :which-key "switch buffer")
-    "b k" '(kill-current-buffer :which-key "kill buffer")
+    "b d" '(kill-current-buffer :which-key "kill buffer")
+    "b D" '(centaur-tabs-kill-other-buffers-in-current-group :which-key "kill other buffers in group")
+    "b n" '(centaur-tabs-forward :which-key "next tab")
+    "b p" '(centaur-tabs-backward :which-key "prev tab")
     "w"   '(:ignore t :which-key "windows")
     "w /" '(split-window-right :which-key "split right")
     "w -" '(split-window-below :which-key "split below")
-    "w d" '(delete-window :which-key "delete window")))
+    "w d" '(delete-window :which-key "delete window")
+    ;; Registered eagerly — packages load lazily but bindings must exist at startup
+    "s"   '(:ignore t :which-key "search")
+    "s r" '(consult-ripgrep :which-key "ripgrep")
+    "s l" '(consult-line :which-key "line")
+    "s f" '(consult-find :which-key "find file")
+    "s o" '(consult-outline :which-key "outline")
+    "s i" '(consult-imenu :which-key "imenu")
+    "s d" '(consult-dir :which-key "directory")
+    "/"   '(consult-ripgrep :which-key "search project")
+    "t"   '(:ignore t :which-key "toggles")
+    "t t" '(consult-theme :which-key "choose theme")
+    "c"   '(:ignore t :which-key "code")
+    "c a" '(eglot-code-actions :which-key "code actions")
+    "c r" '(eglot-rename :which-key "rename")
+    "c f" '(eglot-format :which-key "format")
+    "c d" '(xref-find-definitions :which-key "definition")
+    "c R" '(xref-find-references :which-key "references")
+    "c k" '(eldoc-doc-buffer :which-key "hover / type info")
+    "c n" '(flymake-goto-next-error :which-key "next error")
+    "c p" '(flymake-goto-prev-error :which-key "prev error")
+    "c e" '(consult-flymake :which-key "error list")
+    "c D" '(flymake-show-buffer-diagnostics :which-key "diagnostics buffer")
+    "c i" '(eglot-find-implementation :which-key "implementation")
+    "n"   '(:ignore t :which-key "notes")
+    "n c" '(org-capture :which-key "capture")
+    "n a" '(org-agenda :which-key "agenda")
+    "n d" '(my/lifeos-open-dashboard :which-key "dashboard")
+    "n t" '(my/org-open-today :which-key "today")
+    "n h" '(my/lifeos-open-habits :which-key "habits")
+    "n r" '(my/lifeos-open-reviews :which-key "reviews")
+    "n f" '(org-roam-node-find :which-key "find node")
+    "n i" '(org-roam-node-insert :which-key "insert link")
+    "n g" '(org-roam-graph :which-key "graph")
+    "n p"   '(:ignore t :which-key "project")
+    "n s" '(org-sidebar :which-key "sidebar")
+    "n S" '(org-sidebar-tree :which-key "sidebar tree")
+    "n P" '(org-pomodoro :which-key "pomodoro")
+    "o"   '(:ignore t :which-key "open")
+    "o t" '(vterm :which-key "vterm"))
+
+  ;; M-hjkl window navigation (works in all evil states and emacs state)
+  (general-define-key
+    :keymaps 'override
+    "M-h" #'windmove-left
+    "M-j" #'windmove-down
+    "M-k" #'windmove-up
+    "M-l" #'windmove-right)
+
+  ;; H/L for tab switching in normal mode (LazyVim-style)
+  (general-define-key
+    :states '(normal)
+    :keymaps 'override
+    "H" #'centaur-tabs-backward
+    "L" #'centaur-tabs-forward))
+
+;; Find-file prompt: window or tab
+(defun my/find-file-prompt ()
+  "Find file, asking whether to open in a new window or current tab."
+  (interactive)
+  (let* ((file (read-file-name "Find file: "))
+         (choice (read-char-choice "[w]indow / [t]ab: " '(?w ?t))))
+    (pcase choice
+      (?w (find-file-other-window file))
+      (?t (find-file file)))))
 
 ;; ------------------------------
 ;; Completion / search stack (fast "telescope-like")
@@ -135,6 +327,23 @@
 (use-package vertico
   :demand t
   :config (vertico-mode 1))
+
+(use-package vertico-posframe
+  :after vertico
+  :config
+  (setq vertico-posframe-parameters
+        '((left-fringe . 8)
+          (right-fringe . 8))
+        vertico-posframe-poshandler #'posframe-poshandler-frame-center
+        vertico-posframe-width 100)
+  (vertico-posframe-mode 1))
+
+(defun my/toggle-vertico-posframe ()
+  "Toggle vertico-posframe on/off (escape hatch for Wayland issues)."
+  (interactive)
+  (if vertico-posframe-mode
+      (vertico-posframe-mode -1)
+    (vertico-posframe-mode 1)))
 
 (use-package orderless
   :init
@@ -149,21 +358,39 @@
 (use-package consult
   :after vertico
   :init
-  (setq consult-preview-key "M-.")
-  :config
-  (my/leader
-    "s"   '(:ignore t :which-key "search")
-    "s r" '(consult-ripgrep :which-key "ripgrep")
-    "s l" '(consult-line :which-key "line")
-    "t"   '(:ignore t :which-key "toggles")
-    "t t" '(consult-theme :which-key "choose theme")))
+  ;; Auto-preview with debounce (Telescope-like behavior)
+  (setq consult-preview-key '(:debounce 0.2 any)))
 
 (with-eval-after-load 'consult
   (my/leader
     "p s" '(consult-ripgrep :which-key "ripgrep (project)")))
 
+(use-package consult-dir
+  :after (consult vertico)
+  :bind (("C-x C-d" . consult-dir)
+         :map vertico-map
+         ("C-x C-d" . consult-dir)
+         ("C-x C-j" . consult-dir-jump-file)))
+
 (use-package embark
-  :bind (("C-." . embark-act)))
+  :bind (("C-." . embark-act)
+         ("C-;" . embark-dwim))
+  :init
+  (setq embark-indicators
+        '(embark-which-key-indicator
+          embark-highlight-indicator
+          embark-isearch-highlight-indicator))
+  :config
+  (add-to-list 'display-buffer-alist
+               '("\\`\\*Embark Collect \\(Live\\|Completions\\)\\*"
+                 nil
+                 (window-parameters (mode-line-format . none))))
+  ;; Add magit-status action for files/directories
+  (define-key embark-file-map (kbd "g") #'magit-status))
+
+(use-package embark-consult
+  :after (embark consult)
+  :hook (embark-collect-mode . consult-preview-at-point-mode))
 
 ;; ------------------------------
 ;; Projects + Workspaces + Session restore
@@ -196,7 +423,9 @@
   ;; Load saved perspectives if they exist
   (let ((state-file (expand-file-name "persp-auto-save" persp-save-dir)))
     (when (file-exists-p state-file)
-      (persp-load-state-from-file state-file)))
+      (condition-case nil
+          (persp-load-state-from-file state-file)
+        (error (message "Warning: Could not restore persp-mode state")))))
   (my/leader
     "TAB" '(:ignore t :which-key "workspace")
     "TAB TAB" '(persp-switch :which-key "switch")
@@ -236,18 +465,140 @@
 ;; (desktop-save-mode 1)
 
 ;; ------------------------------
-;; File tree
+;; Git (Magit + magit-todos)
 ;; ------------------------------
-(use-package treemacs
+(use-package magit
+  :commands (magit-status magit-log-current magit-log-all
+             magit-blame magit-diff-dwim magit-file-dispatch
+             magit-stage-file magit-unstage-file)
+  :config
+  (setq magit-display-buffer-function #'magit-display-buffer-same-window-except-diff-v1))
+
+(use-package magit-todos
+  :after magit
+  :config (magit-todos-mode 1))
+
+(with-eval-after-load 'general
+  (my/leader
+    "g"   '(:ignore t :which-key "git")
+    "g g" '(magit-status :which-key "status")
+    "g l" '(magit-log-current :which-key "log (current)")
+    "g L" '(magit-log-all :which-key "log (all)")
+    "g b" '(magit-blame :which-key "blame")
+    "g d" '(magit-diff-dwim :which-key "diff")
+    "g f" '(magit-file-dispatch :which-key "file dispatch")
+    "g s" '(magit-stage-file :which-key "stage file")
+    "g u" '(magit-unstage-file :which-key "unstage file")
+    "g D" '(diff-hl-show-hunk :which-key "show diff hunk")
+    "g t" '(diff-hl-mode :which-key "toggle diff-hl")))
+
+;; ------------------------------
+;; Git fringe indicators (diff-hl)
+;; ------------------------------
+(use-package diff-hl
   :demand t
   :config
-  (setq treemacs-width 34
-        treemacs-indentation 2)
-  ;; Disable line numbers in treemacs
-  (add-hook 'treemacs-mode-hook (lambda () (display-line-numbers-mode -1)) t)
-  (my/leader "e" '(treemacs :which-key "file tree")))
+  (global-diff-hl-mode 1)
+  (diff-hl-flydiff-mode 1)       ; show unstaged changes without saving
+  (add-hook 'dired-mode-hook #'diff-hl-dired-mode-unless-remote) ; fringe indicators in dired
+  ;; Keep in sync with magit operations
+  (add-hook 'magit-pre-refresh-hook  #'diff-hl-magit-pre-refresh)
+  (add-hook 'magit-post-refresh-hook #'diff-hl-magit-post-refresh)
+  ;; Auto-update after external commits (e.g., from Claude Code / terminal).
+  ;; vc-refresh-state fires periodically via auto-revert-check-vc-info.
+  (advice-add 'vc-refresh-state :after
+              (lambda (&rest _)
+                (when (bound-and-true-p diff-hl-mode)
+                  (diff-hl-update-once)))))
 
-(use-package treemacs-evil :after (treemacs evil))
+;; ------------------------------
+;; File explorer (Dired + Dirvish)
+;; ------------------------------
+(use-package dirvish
+  :demand t
+  :init
+  ;; Work around a known native-comp warning in dirvish-extras.el.
+  (when (boundp 'native-comp-jit-compilation-deny-list)
+    (add-to-list 'native-comp-jit-compilation-deny-list "dirvish-extras\\.el\\'"))
+  ;; Keep dired-native workflow; enhance UI with Dirvish.
+  (dirvish-override-dired-mode 1)
+  :config
+  ;; Full-frame dirvish with rich attributes
+  ;; git-msg removed: spawns a git subprocess per file causing lag + display errors
+  (setq dirvish-attributes '(subtree-state nerd-icon vc-state file-size collapse))
+
+  ;; Quick access entries
+  (setq dirvish-quick-access-entries
+        `(("w" "~/Work/"                    "Work")
+          ("o" "~/org/"                     "Org")
+          ("h" "~/"                         "Home")
+          ("d" "~/Downloads/"               "Downloads")
+          ("e" ,user-emacs-directory        "Emacs config")))
+
+  ;; Debounce preview so rapid j/k navigation doesn't stall on each file.
+  ;; Without this, every cursor movement triggers a synchronous preview
+  ;; render (or async subprocess spawn), causing visible lag.
+  (setq dirvish-preview-delay 0.1)
+
+  ;; Don't try to preview large files synchronously
+  (setq dirvish-preview-large-file-threshold (* 5 1024 1024))
+
+  ;; Skip preview for binary/media formats that can't be rendered usefully
+  (setq dirvish-preview-disabled-exts
+        '("iso" "bin" "exe" "dll" "so" "dmg" "mp4" "mkv" "avi" "mov" "zip" "tar" "gz" "7z"))
+
+  ;; Guard dirvish--redisplay (added to pre-redisplay-functions) against nil
+  ;; sessions. Without this, navigating in dirvish throws:
+  ;;   "redisplay--pre-redisplay-functions: (wrong-type-argument number-or-marker-p nil)"
+  (define-advice dirvish--redisplay (:around (fn &rest args) safe-guard)
+    "Catch wrong-type-argument when dirvish session/position is nil."
+    (condition-case nil
+      (apply fn args)
+      (wrong-type-argument nil)))
+
+  ;; Also guard the async preview sentinel against stale sessions.
+  (with-eval-after-load 'dirvish-preview
+    (defun my/dirvish--sentinel-safe (proc _event)
+      "Safe wrapper for `dirvish--preview-update' in process sentinels."
+      (when (and (processp proc) (process-buffer proc))
+        (ignore-errors
+          (dirvish--preview-update (process-get proc 'dv)))))
+    (advice-add 'dirvish--sentinel :override #'my/dirvish--sentinel-safe))
+
+  ;; Load extensions
+  (require 'dirvish-subtree)
+  (require 'dirvish-yank)
+  (require 'dirvish-quick-access)
+  (require 'dirvish-vc)
+  (require 'dirvish-peek)
+  (require 'dirvish-history)
+  (require 'dirvish-collapse)
+
+  ;; Peek mode for minibuffer previews
+  (dirvish-peek-mode 1)
+
+  ;; No line numbers in dired/dirvish
+  (add-hook 'dired-mode-hook (lambda () (display-line-numbers-mode -1)))
+
+  ;; Help segment for dirvish mode-line
+  (dirvish-define-mode-line my-help
+    "Compact key hints."
+    (propertize " j/k move  h/- up  l open  m/u/t marks  C copy  R rename  D delete  g refresh  SPC ? shortcuts "
+                'face 'shadow))
+  (setq dirvish-mode-line-format '(:left (my-help) :right (sort symlink)))
+
+  ;; Evil keybindings for dired navigation
+  (with-eval-after-load 'evil
+    (define-key dired-mode-map [remap evil-forward-char] #'dired-find-file)
+    (define-key dired-mode-map [remap evil-backward-char] #'dired-up-directory)
+    (define-key dired-mode-map [remap evil-previous-line-first-non-blank] #'dired-up-directory)))
+
+(defun my/discover-current-mode ()
+  "Show discoverability help for current major mode."
+  (interactive)
+  (if (fboundp 'discover-my-major)
+      (discover-my-major)
+    (describe-mode)))
 
 (defvar my/workspace-dirs '("~/Workspace/" "~/Work/")
   "List of directories to search for projects on different machines.")
@@ -281,44 +632,22 @@
      (when-let ((proj (project-current nil default-directory)))
        (project-root proj)))))
 
-(defun my/treemacs-open-current-project ()
-  "Open (or focus) Treemacs rooted at the current project."
+(defun my/dirvish-project ()
+  "Open dirvish (full-frame) at the current project root."
   (interactive)
-  (let ((root (or (my/project-root)
-                  (read-directory-name "Project root: "))))
-    (treemacs)
-    ;; Ensure Treemacs is showing ROOT
-    (treemacs-add-and-display-current-project-exclusively)))
-
-(defun my/treemacs-refresh-for-current-project ()
-  "Refresh treemacs to show current project when switching perspectives."
-  ;; Always ensure treemacs is visible
-  (when (fboundp 'treemacs)
-    (treemacs))
-  ;; Then update to current project
-  (when-let ((root (my/project-root)))
-    (treemacs-add-and-display-current-project-exclusively)))
-
-(defvar my/treemacs-last-project nil
-  "Last project root shown in treemacs.")
-
-(defun my/treemacs-follow-project-on-file-open ()
-  "Auto-switch treemacs when opening files from different projects."
-  (when-let ((root (my/project-root)))
-    (unless (equal root my/treemacs-last-project)
-      (setq my/treemacs-last-project root)
-      (when (fboundp 'treemacs-get-local-buffer)
-        (treemacs-add-and-display-current-project-exclusively)))))
-
-;; Auto-update treemacs when opening files
-(add-hook 'find-file-hook #'my/treemacs-follow-project-on-file-open)
-
-;; The helper treemacs uses for "current project" is project.el-aware
-(setq treemacs-project-follow-cleanup t)
+  (let ((root (or (my/project-root) default-directory)))
+    (dirvish root)))
 
 (with-eval-after-load 'general
   (my/leader
-    "e"   '(treemacs :which-key "file tree")))
+    "?"   '(which-key-show-top-level :which-key "shortcut discovery")
+    "h"   '(:ignore t :which-key "help")
+    "h m" '(my/discover-current-mode :which-key "mode commands")
+    "h k" '(describe-key :which-key "describe key")
+    "h f" '(describe-function :which-key "describe function")
+    "h v" '(describe-variable :which-key "describe variable")
+    "e"   '(my/dirvish-project :which-key "explorer (full)")
+    "E"   '(dirvish-quick-access :which-key "quick access dirs")))
 
 ;; ------------------------------
 ;; Terminal inside Emacs
@@ -326,9 +655,432 @@
 (use-package vterm
   :commands vterm
   :config
+  (add-hook 'vterm-mode-hook (lambda () (display-line-numbers-mode -1)) t)
+  ;; Override vterm's meta-key catch-all so M-; (leader) reaches general.
+  ;; Must append (t) so it runs after vterm-mode finishes binding keys.
+  (add-hook 'vterm-mode-hook
+    (lambda ()
+      (define-key vterm-mode-map (kbd "M-;")
+        (lookup-key (evil-get-auxiliary-keymap general-override-mode-map 'normal t)
+                    (kbd "M-;"))))
+    t)
+  (with-eval-after-load 'evil
+    ;; Keep terminal buffers in emacs state so TUI keybindings pass through.
+    (evil-set-initial-state 'vterm-mode 'emacs)
+    (add-hook 'vterm-mode-hook #'evil-emacs-state))
+ )
+
+(use-package ghostel
+  :straight (ghostel :host github :repo "dakra/ghostel")
+  :commands ghostel
+  :config
+  (add-hook 'ghostel-mode-hook (lambda () (display-line-numbers-mode -1)) t)
+  (with-eval-after-load 'evil
+    (evil-set-initial-state 'ghostel-mode 'emacs)
+    (add-hook 'ghostel-mode-hook #'evil-emacs-state))
+  (general-define-key
+   :keymaps 'ghostel-mode-map
+   "M-;" (lookup-key (evil-get-auxiliary-keymap general-override-mode-map 'normal t) (kbd "M-;"))))
+
+(use-package eat
+  :commands eat
+  :straight (eat :host codeberg :repo "akib/emacs-eat")
+  :config
+  (add-hook 'eat-mode-hook (lambda () (display-line-numbers-mode -1)) t)
+  (with-eval-after-load 'evil
+    (evil-set-initial-state 'eat-mode 'emacs)
+    (add-hook 'eat-mode-hook #'evil-emacs-state))
+  (general-define-key
+   :keymaps 'eat-mode-map
+   "M-;" (lookup-key (evil-get-auxiliary-keymap general-override-mode-map 'normal t) (kbd "M-;"))))
+
+(use-package agent-shell-notifications
+  :straight (agent-shell-notifications
+              :type git
+              :host github
+              :repo "zackattackz/agent-shell-notifications")
+  :hook
+  (agent-shell-mode . agent-shell-notifications-mode)
+  :config
+  (setq agent-shell-notifications-idle-timeout 10)
+  (setq agent-shell-notifications-timeout 0)
+  (setq agent-shell-notifications-provider 'agent-shell-notifications-knockknock))
+
+(use-package knockknock
+  :straight (knockknock :type git :host github :repo "konrad1977/knockknock")
+  :config
+  (setq knockknock-use-svg-layout t)
+  (setq knockknock-default-duration 0)
+  (setq knockknock-poshandler #'posframe-poshandler-frame-top-center)
+  (setq knockknock-background-color "#1e1e2e")
+  (setq knockknock-foreground-color "#cdd6f4")
+  (setq knockknock-border-color "#89b4fa")
+  (setq knockknock-border-width 2))
+
+(defun my/agent-shell-notifications-format (type event)
+  "Custom notification format with different icons per event type."
+  (pcase type
+    ('turn-complete (list :title "Agent Ready" :icon "cod-check" :body (format "Response ready: %s" (cdr (assoc-default 'text event)))))
+    ('permission-request (list :title "Permission Needed" :icon "cod-question" :body (format "%s" (cdr (assoc-default 'text event)))))
+    ('error (list :title "Agent Error" :icon "cod-error" :body (format "Error: %s" (cdr (assoc-default 'message event)))))
+    (_ (list :title "Agent" :icon "cod-comment-discussion" :body (format "%s" (cdr (assoc-default 'text event)))))))
+
+(setq agent-shell-notifications-format-function #'my/agent-shell-notifications-format)
+
+(use-package agent-shell-manager
+  :straight (agent-shell-manager
+              :type git
+              :host github
+              :repo "jethrokuan/agent-shell-manager")
+  :config
+  (setq agent-shell-manager-side 'bottom))
+
+(use-package agent-review
+  :straight (agent-review
+              :type git
+              :host github
+              :repo "nineluj/agent-review")
+  :commands agent-review)
+
+(use-package meta-agent-shell
+  :straight (meta-agent-shell
+              :type git
+              :host github
+              :repo "ElleNajt/meta-agent-shell")
+  :after agent-shell
+  :config
+  (setq meta-agent-shell-heartbeat-file "~/heartbeat.org")
+  (setq meta-agent-shell-start-function #'agent-shell))
+
+(use-package agent-shell-knockknock
+  :straight (agent-shell-knockknock
+              :type git
+              :host github
+              :repo "xenodium/agent-shell-knockknock")
+  :after (agent-shell knockknock)
+  :hook (agent-shell-mode . agent-shell-knockknock-mode))
+
+(defun my/agent-shell-force-reset ()
+  "Force-reset agent-shell busy state when stuck after a failed interrupt."
+  (interactive)
+  (unless (derived-mode-p 'agent-shell-mode)
+    (user-error "Not in an agent-shell buffer"))
+  (when (bound-and-true-p shell-maker--busy)
+    (shell-maker-interrupt))
+  (when (map-nested-elt (agent-shell--state) '(:heartbeat :heartbeat-timer))
+    (agent-shell-heartbeat-stop
+     :heartbeat (map-elt (agent-shell--state) :heartbeat)))
+  (message "Agent shell reset."))
+
+(defun my/agent-shell-session-status ()
+  "Show current session info: mode, model, context usage, and busy state."
+  (interactive)
+  (unless (derived-mode-p 'agent-shell-mode)
+    (user-error "Not in an agent-shell buffer"))
+  (let* ((state (agent-shell--state))
+         (session-id (map-nested-elt state '(:session :id)))
+         (mode-id (map-nested-elt state '(:session :mode-id)))
+         (model-id (map-nested-elt state '(:set-model)))
+         (busy (bound-and-true-p shell-maker--busy))
+         (heartbeat-status (map-nested-elt state '(:heartbeat :status))))
+    (message "Session: %s | Mode: %s | Busy: %s | Heartbeat: %s%s"
+             (or session-id "none")
+             (or mode-id "default")
+             busy
+             (or heartbeat-status "none")
+              (if (agent-shell--usage-has-data-p (map-elt state :usage))
+                  (format " | %s" (agent-shell--format-usage (map-elt state :usage)))
+                ""))))
+
+(defvar my/agent-shell-debug-diffs t
+  "When non-nil, log diff extraction details for agent-shell tool calls.")
+
+(defun my/agent-shell--debug-log (format-string &rest args)
+  "Append a formatted debug line to the agent-shell diff log buffer."
+  (when my/agent-shell-debug-diffs
+    (with-current-buffer (get-buffer-create "*agent-shell-diff-debug*")
+      (goto-char (point-max))
+      (insert (format-time-string "[%F %T] "))
+      (insert (apply #'format format-string args))
+      (insert "\n"))))
+
+(defun my/agent-shell-open-diff-debug-log ()
+  "Open the agent-shell diff debug log buffer."
+  (interactive)
+  (pop-to-buffer (get-buffer-create "*agent-shell-diff-debug*")))
+
+(defun my/agent-shell-clear-diff-debug-log ()
+  "Clear the agent-shell diff debug log buffer."
+  (interactive)
+  (with-current-buffer (get-buffer-create "*agent-shell-diff-debug*")
+    (erase-buffer))
+  (message "Cleared *agent-shell-diff-debug*"))
+
+(defun my/agent-shell--map-keys (value)
+  "Return VALUE's keys as strings when it looks like a map/alist."
+  (cond
+   ((vectorp value)
+    nil)
+   ((listp value)
+    (delq nil
+          (mapcar (lambda (entry)
+                    (when (consp entry)
+                      (format "%s" (car entry))))
+                  value)))
+   (t nil)))
+
+(defun my/agent-shell--content-summary (content)
+  "Return a compact summary of CONTENT payload types."
+  (cond
+   ((null content)
+    nil)
+   ((vectorp content)
+    (mapcar (lambda (item) (map-elt item 'type)) content))
+   ((and (listp content)
+         (consp content)
+         (assoc 'type content))
+    (list (map-elt content 'type)))
+   ((listp content)
+    (mapcar (lambda (item)
+              (when (listp item)
+                (map-elt item 'type)))
+            content))
+   (t
+    (list (format "%s" (type-of content))))))
+
+(defun my/agent-shell--debug-make-diff-info (fn &rest args)
+  "Log `agent-shell--make-diff-info' inputs and outputs around FN."
+  (let* ((acp-tool-call (plist-get args :acp-tool-call))
+         (raw-input (map-elt acp-tool-call 'rawInput))
+         (content (map-elt acp-tool-call 'content))
+         (result (apply fn args)))
+    (my/agent-shell--debug-log
+     "make-diff-info title=%S kind=%S status=%S content-types=%S raw-input-keys=%S flags=%S result-keys=%S"
+     (map-elt acp-tool-call 'title)
+     (map-elt acp-tool-call 'kind)
+     (map-elt acp-tool-call 'status)
+     (my/agent-shell--content-summary content)
+     (my/agent-shell--map-keys raw-input)
+     `((patchText . ,(and raw-input (map-elt raw-input 'patchText) t))
+       (diff . ,(and raw-input (map-elt raw-input 'diff) t))
+       (new_str . ,(and raw-input (map-elt raw-input 'new_str) t))
+       (newString . ,(and raw-input (map-elt raw-input 'newString) t))
+       (newText . ,(and raw-input (map-elt raw-input 'newText) t)))
+     (my/agent-shell--map-keys result))
+    (when (and raw-input
+               (or (map-elt raw-input 'patchText)
+                   (map-elt raw-input 'diff)
+                   (map-elt raw-input 'new_str)
+                   (map-elt raw-input 'newString)
+                   (map-elt raw-input 'newText))
+               (null result))
+      (my/agent-shell--debug-log
+       "raw-input=%S content=%S"
+       raw-input
+       content))
+    result))
+
+(defun my/agent-shell--make-diff-info-compat (fn &rest args)
+  "Extend `agent-shell--make-diff-info' for OpenCode diff payloads.
+
+This fills the current gaps in upstream `agent-shell':
+- `rawInput.filepath' instead of `path' or `fileName'
+- `rawInput.patchText' from `apply_patch'
+
+It defers to upstream first and only synthesizes a diff when upstream
+returns nil."
+  (or (apply fn args)
+      (let* ((acp-tool-call (plist-get args :acp-tool-call))
+             (raw-input (map-elt acp-tool-call 'rawInput))
+             (patch-text (and raw-input (map-elt raw-input 'patchText)))
+             (diff-text (and raw-input (map-elt raw-input 'diff)))
+             (file-path (and raw-input
+                             (or (map-elt raw-input 'filepath)
+                                 (map-elt raw-input 'filePath)
+                                 (map-elt raw-input 'path)
+                                 (map-elt raw-input 'fileName))))
+             (parsed (cond
+                      (patch-text
+                       (agent-shell--parse-unified-diff patch-text))
+                      (diff-text
+                       (agent-shell--parse-unified-diff diff-text)))))
+        (when (and parsed file-path)
+          (list (cons :old (car parsed))
+                (cons :new (cdr parsed))
+                (cons :file file-path))))))
+
+(defun my/agent-shell--inline-permission-diff (fn &rest args)
+  "Append inline diff text to tool permission prompts when available."
+  (let* ((body (apply fn args))
+         (acp-request (plist-get args :acp-request))
+         (state (plist-get args :state))
+         (tool-call-id (map-nested-elt acp-request '(params toolCall toolCallId)))
+         (diff (and state tool-call-id
+                    (map-nested-elt state `(:tool-calls ,tool-call-id :diff))))
+         (diff-text (and diff (agent-shell--format-diff-as-text diff))))
+    (if diff-text
+        (concat
+                "    \n"
+                "    ╭─────────╮\n"
+                "    │ changes │\n"
+                "    ╰─────────╯\n\n"
+                (replace-regexp-in-string "^" "    " diff-text)
+                "\n\n"
+                body)
+      body)))
+
+(defun my/agent-shell--hide-view-diff-button (fn &rest args)
+  "Hide the visible `View (v)' button from permission prompts.
+
+Upstream still wires the `v' action into the permission keymap, but this keeps
+the button itself out of the rendered prompt so inline diffs are the only
+visible affordance."
+  (let ((body (apply fn args)))
+    (replace-regexp-in-string
+     "[[:space:]]*\\[ View (v) \\][[:space:]]*"
+     " "
+     body)))
+
+(defun my/agent-shell--suppress-view-diff-button (fn &rest args)
+  "Return no visible button for the upstream `view diff' permission action."
+  (if (equal (plist-get args :option) "view diff")
+      ""
+    (apply fn args)))
+
+(defvar my/agent-shell-permission-feedback-kinds '("edit" "write")
+  "Tool call kinds that should offer optional feedback after permission choices.")
+
+(defvar my/agent-shell-permission-actions (make-hash-table :test 'equal)
+  "Permission actions keyed by shell buffer, request id, and tool call id.")
+
+(defun my/agent-shell--permission-action-key (&key state request-id tool-call-id)
+  "Build the lookup key for a permission action set."
+  (list (map-elt state :buffer) request-id tool-call-id))
+
+(defun my/agent-shell--remember-permission-actions (fn &rest args)
+  "Remember permission actions before FN renders the default permission UI."
+  (when-let* ((acp-request (plist-get args :acp-request))
+              (state (plist-get args :state))
+              (request-id (map-elt acp-request 'id))
+              (tool-call-id (map-nested-elt acp-request '(params toolCall toolCallId))))
+    (puthash (my/agent-shell--permission-action-key
+              :state state :request-id request-id :tool-call-id tool-call-id)
+             (agent-shell--make-permission-actions
+              (map-nested-elt acp-request '(params options)))
+             my/agent-shell-permission-actions))
+  (apply fn args))
+
+(defun my/agent-shell--queue-permission-feedback (buffer prompt)
+  "Prompt for optional feedback and submit it to BUFFER."
+  (let ((feedback (read-string prompt)))
+    (when (and (buffer-live-p buffer)
+               (not (string-empty-p feedback)))
+      (run-at-time 0.2 nil
+                   (lambda (shell-buffer msg)
+                     (when (buffer-live-p shell-buffer)
+                       (with-current-buffer shell-buffer
+                         (agent-shell-insert :text msg :submit t))))
+                   buffer feedback))))
+
+(defun my/agent-shell--permission-feedback-response (fn &rest args)
+  "After FN resolves a permission, optionally collect feedback for edit/write actions."
+  (let* ((state (plist-get args :state))
+         (request-id (plist-get args :request-id))
+         (tool-call-id (plist-get args :tool-call-id))
+         (option-id (plist-get args :option-id))
+         (cancelled (plist-get args :cancelled))
+         (key (and state request-id tool-call-id
+                   (my/agent-shell--permission-action-key
+                    :state state :request-id request-id :tool-call-id tool-call-id)))
+         (actions (and key (gethash key my/agent-shell-permission-actions)))
+         (action (and option-id
+                      (seq-find (lambda (candidate)
+                                  (equal (map-elt candidate :option-id) option-id))
+                                actions)))
+         (action-kind (map-elt action :kind))
+         (tool-kind (and state tool-call-id
+                         (map-nested-elt state `(:tool-calls ,tool-call-id :kind))))
+         (tool-title (and state tool-call-id
+                          (map-nested-elt state `(:tool-calls ,tool-call-id :title))))
+         (buffer (and state (map-elt state :buffer))))
+    (unwind-protect
+        (prog1 (apply fn args)
+          (when (and (not cancelled)
+                     (member tool-kind my/agent-shell-permission-feedback-kinds)
+                     (member action-kind '("allow_once" "reject_once"))
+                     (buffer-live-p buffer))
+            (my/agent-shell--queue-permission-feedback
+             buffer
+             (format "%s feedback for %s (optional): "
+                     (if (string= action-kind "allow_once") "Accept" "Reject")
+                     (or tool-title tool-kind)))))
+      (when key
+        (remhash key my/agent-shell-permission-actions)))))
+
+(use-package agent-shell
+  :ensure t
+  :commands (agent-shell
+             agent-shell-opencode-start-agent
+             agent-shell-anthropic-start-claude-code
+             agent-shell-toggle
+             agent-shell-send-region
+             agent-shell-send-file)
+  :init
+  (setq agent-shell-anthropic-default-session-mode-id "code"
+        agent-shell-show-usage-at-turn-end t
+        agent-shell-show-context-usage-indicator 'detailed
+        agent-shell-prefer-viewport-interaction nil
+        agent-shell-thought-process-expand-by-default t
+        agent-shell-tool-use-expand-by-default t)
+  :config
+  (setq agent-shell-permission-responder-function nil)
+  (advice-remove 'agent-shell--make-diff-info #'my/agent-shell--make-diff-info-compat)
+  (advice-add 'agent-shell--make-diff-info :around #'my/agent-shell--make-diff-info-compat)
+  (advice-remove 'agent-shell--make-diff-info #'my/agent-shell--debug-make-diff-info)
+  (advice-add 'agent-shell--make-diff-info :around #'my/agent-shell--debug-make-diff-info)
+  (advice-remove 'agent-shell--make-tool-call-permission-text #'my/agent-shell--hide-view-diff-button)
+  (advice-add 'agent-shell--make-tool-call-permission-text :around #'my/agent-shell--hide-view-diff-button)
+  (advice-remove 'agent-shell--make-permission-button #'my/agent-shell--suppress-view-diff-button)
+  (advice-add 'agent-shell--make-permission-button :around #'my/agent-shell--suppress-view-diff-button)
+  (advice-remove 'agent-shell--make-tool-call-permission-text #'my/agent-shell--inline-permission-diff)
+  (advice-add 'agent-shell--make-tool-call-permission-text :around #'my/agent-shell--inline-permission-diff)
+  ;; Feedback advice disabled for now - it hangs when read-string runs during busy state
+  ;; (advice-remove 'agent-shell--make-tool-call-permission-text #'my/agent-shell--remember-permission-actions)
+  ;; (advice-add 'agent-shell--make-tool-call-permission-text :around #'my/agent-shell--remember-permission-actions)
+  ;; (advice-remove 'agent-shell--send-permission-response #'my/agent-shell--permission-feedback-response)
+  ;; (advice-add 'agent-shell--send-permission-response :around #'my/agent-shell--permission-feedback-response)
+  (add-hook 'agent-shell-mode-hook (lambda () (display-line-numbers-mode -1)) t)
+  (with-eval-after-load 'evil
+    (evil-define-key 'insert agent-shell-mode-map (kbd "RET") #'newline)
+    (evil-define-key 'normal agent-shell-mode-map (kbd "RET") #'comint-send-input)
+    (add-hook 'diff-mode-hook
+              (lambda ()
+                (when (string-match-p "\\*agent-shell-diff\\*" (buffer-name))
+                  (evil-emacs-state))))
+    (dolist (state '(normal motion))
+      (evil-define-key state agent-shell-mode-map
+        (kbd "C-c C-k") #'my/agent-shell-force-reset)))
+  (define-key agent-shell-mode-map (kbd "C-c C-k") #'my/agent-shell-force-reset))
+
+(with-eval-after-load 'general
   (my/leader
-    "o"   '(:ignore t :which-key "open")
-    "o t" '(vterm :which-key "vterm")))
+    "a"   '(:ignore t :which-key "ai")
+    "a a" '(agent-shell :which-key "agent shell")
+    "a o" '(agent-shell-opencode-start-agent :which-key "opencode")
+    "a c" '(agent-shell-anthropic-start-claude-code :which-key "claude")
+    "a t" '(agent-shell-toggle :which-key "toggle")
+    "a s" '(agent-shell-send-region :which-key "send region")
+    "a m" '(agent-shell-set-session-mode :which-key "set mode")
+    "a M" '(agent-shell-set-session-model :which-key "set model")
+    "a u" '(agent-shell-show-usage :which-key "usage")
+    "a S" '(my/agent-shell-session-status :which-key "session status")
+    "a L" '(my/agent-shell-open-diff-debug-log :which-key "diff debug log")
+    "a l" '(agent-shell-view-acp-logs :which-key "ACP logs")
+    "a r" '(my/agent-shell-force-reset :which-key "force reset")
+    "a C" '(my/agent-shell-clear-diff-debug-log :which-key "clear diff debug log")
+    "a R" '(agent-review :which-key "review code")
+    "a d" '(agent-shell-manager-toggle :which-key "manager")
+    "a n" '(knockknock-close :which-key "close notification")))
 
 ;; ------------------------------
 ;; LSP (Eglot) + Completion UI (Corfu)
@@ -349,16 +1101,30 @@
   (add-to-list 'completion-at-point-functions #'cape-file)
   (add-to-list 'completion-at-point-functions #'cape-dabbrev))
 
-;; Tree-sitter grammar sources (defer loading to avoid startup crash)
-;; (setq treesit-language-source-alist
-;;       '((typescript "https://github.com/tree-sitter/tree-sitter-typescript" "master" "typescript/src")
-;;         (tsx        "https://github.com/tree-sitter/tree-sitter-typescript" "master" "tsx/src")))
+;; Tree-sitter grammar sources
+(setq treesit-language-source-alist
+      '((typescript "https://github.com/tree-sitter/tree-sitter-typescript" "master" "typescript/src")
+        (tsx        "https://github.com/tree-sitter/tree-sitter-typescript" "master" "tsx/src")
+        (javascript "https://github.com/tree-sitter/tree-sitter-javascript" "master" "src")))
+
+;; (treesit-query-compile predicate-strip advice lives near top of init.el so
+;; it's installed before persp-mode restores any .ts/.tsx buffers.)
 
 (use-package eglot
   :commands (eglot eglot-ensure)
   :init
-  ;; Auto-start LSP for programming modes - commented to avoid startup crash
-  ;; (add-hook 'prog-mode-hook #'eglot-ensure)
+  ;; Auto-install missing tree-sitter grammars
+  (defun my/treesit-install-missing-grammars ()
+    "Install missing tree-sitter grammars for typescript, tsx, and javascript."
+    (dolist (lang '(typescript tsx javascript))
+      (unless (treesit-language-available-p lang)
+        (treesit-install-language-grammar lang))))
+
+  (add-hook 'emacs-startup-hook #'my/treesit-install-missing-grammars)
+
+  ;; Auto-start LSP for TypeScript/JavaScript modes
+  (dolist (mode '(typescript-ts-mode tsx-ts-mode js-ts-mode))
+    (add-hook (intern (format "%s-hook" mode)) #'eglot-ensure))
   ;; Associate TS files with proper major modes
   (add-to-list 'auto-mode-alist '("\\.ts\\'"  . typescript-ts-mode))
   (add-to-list 'auto-mode-alist '("\\.tsx\\'" . tsx-ts-mode))
@@ -368,16 +1134,17 @@
   :config
   (setq eglot-autoshutdown t
         eglot-send-changes-idle-time 0.2)
-  ;; Use vtsls for TypeScript
+  ;; Use vtsls for TypeScript (install: npm install -g @vtsls/language-server)
   (add-to-list 'eglot-server-programs
                '((typescript-ts-mode tsx-ts-mode) . ("vtsls" "--stdio")))
-  (my/leader
-    "c"   '(:ignore t :which-key "code")
-    "c a" '(eglot-code-actions :which-key "code actions")
-    "c r" '(eglot-rename :which-key "rename")
-    "c f" '(eglot-format :which-key "format")
-    "c d" '(xref-find-definitions :which-key "definition")
-    "c R" '(xref-find-references :which-key "references")))
+  ;; Route xref through consult for telescope-style references popup
+  (with-eval-after-load 'consult
+    (require 'consult-xref)
+    (setq xref-show-xrefs-function      #'consult-xref
+          xref-show-definitions-function #'consult-xref))
+  ;; consult-flymake for error list
+  (with-eval-after-load 'consult
+    (require 'consult-flymake)))
 
 ;; ------------------------------
 ;; Org: second brain + literate programming
@@ -385,20 +1152,132 @@
 (use-package org
   :straight (:type built-in)
   :init
-  (setq org-directory (expand-file-name "~/org/")
+  (setq org-directory (expand-file-name "~/Work/lifeos/")
         org-hide-emphasis-markers t
         org-startup-indented t
         org-ellipsis " ▾"
         org-log-done 'time
         org-src-tab-acts-natively t
-        org-confirm-babel-evaluate nil)
+        org-confirm-babel-evaluate nil
+        org-id-link-to-org-use-id t
+        org-id-locations-file (expand-file-name ".org-id-locations" user-emacs-directory))
   :config
-  ;; Babel languages (extend as needed)
+  (add-to-list 'org-modules 'org-habit t)
+  (org-load-modules-maybe t)
+
   (org-babel-do-load-languages
    'org-babel-load-languages
    '((emacs-lisp . t)
      (python . t)
-     (shell . t))))
+     (shell . t)))
+
+  (add-hook 'org-capture-prepare-final-hook 'org-id-get-create)
+
+  (let* ((inbox (expand-file-name "inbox.org" org-directory))
+         (tasks (expand-file-name "tasks.org" org-directory))
+         (projects (expand-file-name "projects.org" org-directory))
+         (goals (expand-file-name "goals.org" org-directory))
+         (milestones (expand-file-name "milestones.org" org-directory))
+         (habits (expand-file-name "habits.org" org-directory))
+         (routines (expand-file-name "routines.org" org-directory))
+         (journal (expand-file-name "journal.org" org-directory))
+         (goal-year (format-time-string "%Y")))
+    (setq org-default-notes-file inbox
+          org-agenda-files (list inbox tasks projects goals milestones habits routines)
+          org-refile-targets `((,tasks :maxlevel . 2)
+                               (,projects :maxlevel . 2)
+                               (,goals :maxlevel . 3)
+                               (,milestones :maxlevel . 2)
+                               (,habits :maxlevel . 2)
+                               (,routines :maxlevel . 2))
+          org-outline-path-complete-in-steps nil
+          org-refile-use-outline-path 'file
+          org-enforce-todo-dependencies t
+          org-cycle-hide-drawer-startup t
+          org-hide-leading-stars t
+          org-todo-keywords '((sequence "TODO(t)" "NEXT(n)" "WAITING(w)" "SOMEDAY(s)" "|" "DONE(d)" "CANCELLED(c)"))
+          org-capture-templates
+          `(("t" "Task" entry
+             (file+headline ,inbox "Tasks To Process")
+             "* TODO %? #task\n:PROPERTIES:\n:CREATED: %U\n:PROJECT_REF: \n:GOAL_REF: \n:CONTEXT: \n:DAILY_PRIORITY: \n:TIME_EST_HOURS: \n:END:\n"
+             :prepend t)
+            ("n" "Note" entry
+             (file+headline ,inbox "Notes To Process")
+             "* %? #note\n:PROPERTIES:\n:CREATED: %U\n:END:\n"
+             :prepend t)
+            ("p" "Project" entry
+             (file+headline ,projects "Projects")
+             "** TODO %? #project\n:PROPERTIES:\n:CREATED: %U\n:GOAL_REF: \n:PRIORITY_LEVEL: %^{Priority|low|medium|high|urgent}\n:REVIEW_FREQUENCY: 7\n:LAST_REVIEW:\n:NEXT_REVIEW:\n:END:\n"
+             :prepend t)
+            ("g" "Goal" entry
+             (file+headline ,goals ,goal-year)
+             "** TODO %? #goal\n:PROPERTIES:\n:CREATED: %U\n:YEAR: %<%Y>\n:QUARTER: %^{Quarter|Q1|Q2|Q3|Q4}\n:MONTH: %^{Month|January|February|March|April|May|June|July|August|September|October|November|December}\n:REVIEW_FREQUENCY: 30\n:END:\n"
+             :prepend t)
+            ("m" "Milestone" entry
+             (file+headline ,milestones goal-year)
+             "** TODO %? #milestone\n:PROPERTIES:\n:CREATED: %U\n:GOAL_REF: \n:YEAR: %<%Y>\n:END:\nDEADLINE: %^t\n"
+             :prepend t)
+            ("h" "Habit" entry
+             (file+headline ,habits "Habits")
+             "** TODO %? #habit\n:PROPERTIES:\n:CREATED: %U\n:GOAL_REF: \n:TRACKING_MODE: %^{Tracking mode|checklist|quantitative}\n:CADENCE: %^{Cadence|daily|weekly|custom}\n:TARGET_PER_WEEK: %^{Target per week|1|3|5|7}\n:START_DATE: %<%Y-%m-%d>\n:END:\n"
+             :prepend t)
+            ("r" "Routine" entry
+             (file+headline ,routines "Routine Inbox")
+             "** TODO %? #routine\n:PROPERTIES:\n:CREATED: %U\n:ROUTINE_TYPE: %^{Routine type|morning|evening}\n:CATEGORY: %^{Category|planning|physical|mental|hygiene|medication|wind-down|other}\n:REQUIRED: %^{Required|yes|no}\n:SEQUENCE_ORDER:\n:TIME_ESTIMATE:\n:PROMPT_TOKEN:\n:ALARM_CREATED: no\n:ALARM_SCHEDULED_FOR:\n:SNOOZE_UNTIL:\n:END:\n"
+             :prepend t)
+            ("j" "Journal (today)" entry
+             (file+olp+datetree ,journal)
+             "* Daily note\n:PROPERTIES:\n:ENERGY:\n:MOOD:\n:END:\n\n- Summary :: %?\n- Notes :: \n"))
+          org-agenda-custom-commands
+          (list
+           `("d" "LifeOS dashboard"
+             ((agenda ""
+                      ((org-agenda-span 1)
+                       (org-deadline-warning-days 7)
+                       (org-agenda-overriding-header "Today")))
+              (alltodo ""
+                       ((org-agenda-overriding-header "Inbox And Tasks")
+                        (org-agenda-files (list ,inbox ,tasks))
+                        (org-super-agenda-groups
+                         '((:name "Inbox" :file-path "inbox.org")
+                           (:name "Overdue" :deadline past)
+                           (:name "Due Today" :deadline today)
+                           (:name "Scheduled Today" :scheduled today)
+                           (:name "Next Actions" :todo "NEXT")
+                           (:name "Waiting" :todo "WAITING")
+                           (:name "Someday" :todo "SOMEDAY")
+                           (:discard (:todo "DONE"))
+                           (:discard (:todo "CANCELLED"))))))
+              (alltodo ""
+                       ((org-agenda-overriding-header "Projects")
+                        (org-agenda-files (list ,projects))
+                        (org-super-agenda-groups
+                         '((:name "Active Projects" :todo "NEXT")
+                           (:name "Waiting Projects" :todo "WAITING")
+                           (:name "Project Backlog" :todo "TODO")
+                           (:name "Someday Projects" :todo "SOMEDAY")
+                           (:discard (:todo "DONE"))
+                           (:discard (:todo "CANCELLED"))))))))
+           `("n" "Next actions" todo "NEXT"
+             ((org-agenda-files (list ,tasks))))
+           `("w" "Waiting" todo "WAITING"
+             ((org-agenda-files (list ,tasks ,projects))))
+           `("r" "Project reviews" alltodo ""
+             ((org-agenda-overriding-header "Project Reviews")
+              (org-agenda-files (list ,projects))
+              (org-super-agenda-groups
+               '((:name "Active Projects" :todo "NEXT")
+                 (:name "Waiting Projects" :todo "WAITING")
+                 (:name "Backlog Projects" :todo "TODO")
+                 (:discard (:todo "DONE"))
+                 (:discard (:todo "CANCELLED"))))))
+           `("h" "Habits" alltodo ""
+             ((org-agenda-files (list ,habits))
+              (org-agenda-overriding-header "Habits")
+              (org-super-agenda-groups
+               '((:name "Habits" :todo ("TODO" "NEXT" "WAITING" "SOMEDAY"))
+                 (:discard (:todo "DONE"))
+                 (:discard (:todo "CANCELLED"))))))))))
 
 (defun my/org-today-file ()
   "Return path to today's daily note file."
@@ -409,25 +1288,101 @@
   (interactive)
   (find-file (my/org-today-file)))
 
-(with-eval-after-load 'org
-  (setq org-default-notes-file (expand-file-name "inbox.org" org-directory)
-        org-agenda-files (list org-directory))
+(defun my/lifeos-file (name)
+  "Return absolute path for NAME inside `org-directory'."
+  (expand-file-name name org-directory))
 
-  (setq org-capture-templates
-        `(("t" "Task (inbox)" entry
-           (file ,org-default-notes-file)
-           "* TODO %?\n  %U\n  %a\n")
-          ("n" "Note (inbox)" entry
-           (file ,org-default-notes-file)
-           "* %?\n  %U\n  %a\n")
-          ("j" "Journal (today)" entry
-           (file+olp+datetree ,(expand-file-name "journal.org" org-directory))
-           "* %?\n%U\n")))
+(defun my/lifeos-open-file (name)
+  "Open lifeos file NAME from `org-directory'."
+  (interactive)
+  (find-file (my/lifeos-file name)))
 
-  (my/leader
-    "n c" '(org-capture :which-key "capture")
-    "n a" '(org-agenda :which-key "agenda")
-    "n t" '(my/org-open-today :which-key "today")))
+(defun my/lifeos-open-inbox ()
+  "Open inbox.org."
+  (interactive)
+  (my/lifeos-open-file "inbox.org"))
+
+(defun my/lifeos-open-tasks ()
+  "Open tasks.org."
+  (interactive)
+  (my/lifeos-open-file "tasks.org"))
+
+(defun my/lifeos-open-projects ()
+  "Open projects.org."
+  (interactive)
+  (my/lifeos-open-file "projects.org"))
+
+(defun my/lifeos-open-goals ()
+  "Open goals.org."
+  (interactive)
+  (my/lifeos-open-file "goals.org"))
+
+(defun my/lifeos-open-milestones ()
+  "Open milestones.org."
+  (interactive)
+  (my/lifeos-open-file "milestones.org"))
+
+(defun my/lifeos-open-habits-file ()
+  "Open habits.org."
+  (interactive)
+  (my/lifeos-open-file "habits.org"))
+
+(defun my/lifeos-open-routines ()
+  "Open routines.org."
+  (interactive)
+  (my/lifeos-open-file "routines.org"))
+
+(defun my/lifeos-open-journal ()
+  "Open journal.org."
+  (interactive)
+  (my/lifeos-open-file "journal.org"))
+
+(defun my/lifeos-open-dashboard ()
+  "Open the main LifeOS dashboard agenda."
+  (interactive)
+  (org-agenda nil "d"))
+
+(defun my/lifeos-open-habits ()
+  "Open the habits agenda view."
+  (interactive)
+  (org-agenda nil "h"))
+
+(defun my/lifeos-open-reviews ()
+  "Open the project review agenda view."
+  (interactive)
+  (org-agenda nil "r"))
+
+;; Move completed items to "* Completed" heading in same file
+(defun my/org-archive-completed-to-completed-section ()
+  "Archive completed/cancelled TODO items to a '* Completed' heading in the same file."
+  (interactive)
+  (save-excursion
+    (goto-char (point-min))
+    (let ((completed-heading nil))
+      ;; Find or create "* Completed" heading
+      (while (and (not completed-heading)
+                  (re-search-forward "^\\*+ " nil t))
+        (when (string-equal (org-get-heading t t t t) "Completed")
+          (setq completed-heading (point))))
+      (unless completed-heading
+        (goto-char (point-max))
+        (insert "\n* Completed\n")
+        (setq completed-heading (point)))
+      ;; Now move completed items
+      (goto-char (point-min))
+      (while (re-search-forward org-heading-regexp nil t)
+        (let* ((todo-state (org-get-todo-state))
+               (is-done (member todo-state '("DONE" "CANCELLED"))))
+          (when is-done
+            (let ((heading-start (point-at-bol))
+                  (heading-end (save-excursion
+                                 (outline-next-heading)
+                                 (point))))
+              (kill-region heading-start heading-end)
+              (goto-char completed-heading)
+              (yank)
+              (setq completed-heading (point))
+              (goto-char heading-start))))))))
 
 (use-package org-modern
   :after org
@@ -442,12 +1397,178 @@
   :init
   (setq org-roam-directory (file-truename (expand-file-name "roam/" org-directory)))
   :config
-  (org-roam-db-autosync-mode 1)
+  (org-roam-db-autosync-mode 1))
+
+(use-package org-supertag
+  :straight (:host github :repo "yibie/org-supertag")
+  :after org
+  :init
+  (setq org-supertag-sync-directories (list org-directory)
+        supertag-data-directory
+        (expand-file-name "org-supertag/" "/home/joshkosh/Work/dotfiles/config/emacs/.config/emacs/"))
+  :config
+  (defun my/lifeos-supertag-initialize ()
+    "Initialize org-supertag for the LifeOS directory."
+    (interactive)
+    (supertag-sync-full-initialize))
+
+  (defun my/lifeos-supertag-rescan ()
+    "Rescan LifeOS files into the org-supertag database."
+    (interactive)
+    (supertag-sync-full-rescan)))
+
+;; ------------------------------
+;; Org extras: search, navigation, notifications, pomodoro
+;; ------------------------------
+(use-package org-ql
+  :after org)
+
+(use-package org-super-agenda
+  :after org
+  :config
+  (org-super-agenda-mode 1))
+
+(use-package org-wild-notifier
+  :after org
+  :config
+  (setq org-wild-notifier-alert-time '(10 30 60)
+        org-wild-notifier-notification-title "lifeos"
+        org-wild-notifier-keyword-whitelist nil)
+  (org-wild-notifier-mode 1))
+
+(use-package org-tidy
+  :after org
+  :hook (org-mode . org-tidy-mode)
+  :config
+  (setq org-tidy-properties-inline-symbol "♯"))
+
+(use-package org-sticky-header
+  :after org
+  :hook (org-mode . org-sticky-header-mode)
+  :config
+  (setq org-sticky-header-full-path 'full
+        org-sticky-header-outline-path-separator " > "))
+
+(use-package org-agenda-property
+  :after org
+  :config
+  (setq org-agenda-property-list '("ENERGY" "CONTEXT" "RELATED_PROJECT" "REVIEW_FREQUENCY"))
+  (setq org-agenda-property-position 'right))
+
+(use-package org-pomodoro
+  :after org
+  :config
+  (setq org-pomodoro-length 25
+        org-pomodoro-short-break-length 5
+        org-pomodoro-long-break-length 15
+        org-pomodoro-long-break-frequency 4))
+
+(use-package org-sidebar
+  :after org)
+
+(with-eval-after-load 'org-agenda
+  (general-define-key
+   :keymaps 'org-agenda-mode-map
+   "M-;" (lookup-key (evil-get-auxiliary-keymap general-override-mode-map 'normal t)
+                     (kbd "M-;"))))
+
+(use-package calfw
+  :after org)
+(use-package calfw-org
+  :after (org calfw)
+  :config
+  (defun my/calfw-open ()
+    "Open calfw calendar showing org agenda items."
+    (interactive)
+    (cfw:open-calendar-buffer
+     :contents-sources
+     (list (cfw:org-create-source "Green"))))
+
+  )
+
+(with-eval-after-load 'general
   (my/leader
-    "n"   '(:ignore t :which-key "notes")
-    "n f" '(org-roam-node-find :which-key "find node")
-    "n i" '(org-roam-node-insert :which-key "insert link")
-    "n g" '(org-roam-graph :which-key "graph")))
+    "n v" '(my/calfw-open :which-key "calendar")
+    "n I" '(my/lifeos-open-inbox :which-key "inbox")
+    "n T" '(my/lifeos-open-tasks :which-key "tasks")
+    "n P" '(my/lifeos-open-projects :which-key "projects")
+    "n G" '(my/lifeos-open-goals :which-key "goals")
+    "n M" '(my/lifeos-open-milestones :which-key "milestones")
+    "n H" '(my/lifeos-open-habits-file :which-key "habits")
+    "n R" '(my/lifeos-open-routines :which-key "routines")
+    "n J" '(my/lifeos-open-journal :which-key "journal")
+    "n u" '(my/lifeos-supertag-initialize :which-key "supertag init")
+    "n U" '(my/lifeos-supertag-rescan :which-key "supertag rescan")))
+
+(use-package org-time-budgets
+  :after org
+  :config
+  (setq org-time-budgets
+        `((:title "Work"    :match "work"     :budget "6:00"  :blocks (workday week))
+          (:title "School"  :match "school"   :budget "4:00"  :blocks (workday week))
+          (:title "Personal" :match "personal" :budget "3:00"  :blocks (day week)))))
+
+;; OpenSpec — spec-driven project context for org capture
+(use-package openspec
+  :straight (:host github :repo "Zacalot/openspec.el")
+  :after org
+  :config
+  (defun my/openspec-project-file ()
+    "Return the openspec project file path for the current project, or nil."
+    (when-let* ((proj (project-current))
+                (root (project-root proj))
+                (spec-file (expand-file-name "openspec/project.md" root)))
+      (when (file-exists-p spec-file)
+        spec-file)))
+
+  (defun my/openspec-capture-project ()
+    "Capture a TODO into the current project's openspec-project.org file, or fall back to tasks.org."
+    (interactive)
+    (if-let* ((proj (project-current))
+              (root (project-root proj))
+              (spec-dir (expand-file-name "openspec/" root)))
+        (progn
+          (unless (file-exists-p spec-dir)
+            (make-directory spec-dir t))
+          (let ((org-file (expand-file-name "project-todos.org" spec-dir)))
+            (find-file org-file)
+            (goto-char (point-max))
+            (unless (bolp) (insert "\n"))
+            (org-capture nil "t")))
+      (org-capture nil "t")))
+
+  (defun my/openspec-goto-project-todos ()
+    "Open project-todos.org for the current project, or prompt for one."
+    (interactive)
+    (if-let* ((proj (project-current))
+              (root (project-root proj))
+              (spec-dir (expand-file-name "openspec/" root))
+              (todo-file (expand-file-name "project-todos.org" spec-dir)))
+        (find-file todo-file)
+      (find-file (expand-file-name "tasks.org" org-directory))))
+
+  (with-eval-after-load 'general
+    (my/leader
+      "n p t" '(my/openspec-capture-project :which-key "capture project task")
+      "n p f" '(my/openspec-goto-project-todos :which-key "find project todos"))))
+
+;; ------------------------------
+;; Markdown
+;; ------------------------------
+(use-package markdown-mode
+  :mode ("\\.md\\'" . markdown-mode)
+  :init
+  (setq markdown-fontify-code-blocks-natively t
+        markdown-hide-markup nil)
+  :config
+  ;; Scale headers without touching colors — let the active theme decide
+  (dolist (spec '((markdown-header-face-1 . 1.4)
+                  (markdown-header-face-2 . 1.3)
+                  (markdown-header-face-3 . 1.2)
+                  (markdown-header-face-4 . 1.1)))
+    (set-face-attribute (car spec) nil
+                        :height (cdr spec)
+                        :weight 'bold)))
 
 ;; ------------------------------
 ;; Themes / Fonts
@@ -478,7 +1599,8 @@
     "t f"  '(set-frame-font :which-key "set font (prompt)")
     "t +"  '(my/font-bigger :which-key "font bigger")
     "t -"  '(my/font-smaller :which-key "font smaller")
-    "t F"  '(my/toggle-fullscreen :which-key "toggle fullscreen")))
+    "t F"  '(my/toggle-fullscreen :which-key "toggle fullscreen")
+    "t p"  '(my/toggle-vertico-posframe :which-key "toggle posframe")))
 
 ;; Bigger text + more breathing room
 (set-face-attribute 'default nil :family "JetBrains Mono" :height 160) ; 16pt-ish
@@ -506,26 +1628,58 @@
 (use-package doom-themes
   :demand t
   :config
-  (my/disable-all-themes)     ;; optional but avoids theme stacking
-  (load-theme 'doom-one t)
+  (load-theme 'doom-gruvbox t))
   ;; Make line numbers more visible
-  (set-face-attribute 'line-number nil
-                      :foreground "#5c6370"
-                      :background 'unspecified
-                      :weight 'normal)
-  (set-face-attribute 'line-number-current-line nil
-                      :foreground "#abb2bf"
-                      :background "#3e4451"
-                      :weight 'bold))
+  ;; (set-face-attribute 'line-number nil
+  ;;                    :foreground "#5c6370"
+  ;;                  :background 'unspecified
+  ;;                :weight 'normal)
+  ;; (set-face-attribute 'line-number-current-line nil
+  ;;                     :foreground "#abb2bf"
+  ;;                     :background "#3e4451"
+  ;;                     :weight 'bold))
 
 (use-package nerd-icons)
 (use-package doom-modeline
+  :demand t
   :init
-  (setq doom-modeline-height 34)
+  (setq doom-modeline-height 40
+        doom-modeline-modal-icon nil)   ; plain text state indicator (N/I/V) instead of circle icon
   :config
+  ;; Hide noisy segments
+  (setq doom-modeline-buffer-encoding nil       ; always utf-8, not useful
+        doom-modeline-enable-buffer-position nil ; hide L478
+        doom-modeline-percent-position nil)      ; hide 45%
+  ;; Scale up the mode-line text (1.1 = 110% of default font size)
+  (custom-set-faces
+   '(mode-line          ((t :height 1.1)))
+   '(mode-line-inactive ((t :height 1.1))))
   (doom-modeline-mode 1))
-
 
 (with-eval-after-load 'general
   (my/leader
     "t 0" '(my/disable-all-themes :which-key "disable themes")))
+(custom-set-variables
+ ;; custom-set-variables was added by Custom.
+ ;; If you edit it by hand, you could mess it up, so be careful.
+ ;; Your init file should contain only one such instance.
+ ;; If there is more than one, they won't work right.
+ '(custom-safe-themes
+   '("7ec8fd456c0c117c99e3a3b16aaf09ed3fb91879f6601b1ea0eeaee9c6def5d9"
+     "38b43b865e2be4fe80a53d945218318d0075c5e01ddf102e9bec6e90d57e2134"
+     "4990532659bb6a285fee01ede3dfa1b1bdf302c5c3c8de9fad9b6bc63a9252f7"
+     "d481904809c509641a1a1f1b1eb80b94c58c210145effc2631c1a7f2e4a2fdf4"
+     "8c7e832be864674c220f9a9361c851917a93f921fedb7717b1b5ece47690c098"
+     "3613617b9953c22fe46ef2b593a2e5bc79ef3cc88770602e7e569bbd71de113b"
+     "720838034f1dd3b3da66f6bd4d053ee67c93a747b219d1c546c41c4e425daf93"
+     "dd4582661a1c6b865a33b89312c97a13a3885dc95992e2e5fc57456b4c545176"
+     "4594d6b9753691142f02e67b8eb0fda7d12f6cc9f1299a49b819312d6addad1d"
+     default))
+ '(warning-suppress-types '((initialization))))
+(custom-set-faces
+ ;; custom-set-faces was added by Custom.
+ ;; If you edit it by hand, you could mess it up, so be careful.
+ ;; Your init file should contain only one such instance.
+ ;; If there is more than one, they won't work right.
+ )
+;; fave themes so far: doom-challenger-deep, doom-manegarm, doom-ayu-dark, doom-horizon, doom-dracula, doom-lantern, doom-monokai-pro, doom-moonlight, doom-one, doom-gruvbox

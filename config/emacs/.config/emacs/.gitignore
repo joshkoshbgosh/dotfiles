@@ -1,10 +1,13 @@
 # Emacs generated files - do not commit
 .cache/
+elpa/
+transient/
 eln-cache/
 straight/
 auto-save-list/
 persp/
 tree-sitter/
+.excluded-themes
 
 # Session/state files
 .emacs.desktop

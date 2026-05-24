@@ -17,3 +17,9 @@
 ;; Reduce GC during startup (we'll restore later)
 (setq gc-cons-threshold (* 128 1024 1024)
       gc-cons-percentage 0.6)
+
+;; Silence noisy upstream native-comp warnings from packages we don't patch.
+(when (boundp 'native-comp-jit-compilation-deny-list)
+  (dolist (re '("general\\.el\\'"
+                "centaur-tabs-interactive\\.el\\'"))
+    (add-to-list 'native-comp-jit-compilation-deny-list re)))

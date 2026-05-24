@@ -8,3 +8,9 @@
 **/id_rsa*
 **/id_ed25519*
 **/.ssh/
+/.agent-shell/
+/session-ses_*.md
+
+# generated Emacs runtime state
+/config/emacs/.config/emacs/org-supertag/
+/config/emacs/.config/emacs/.org-id-locations

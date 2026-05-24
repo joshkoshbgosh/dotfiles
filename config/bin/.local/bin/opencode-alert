@@ -1,0 +1,40 @@
+#!/bin/bash
+# OpenCode notification script
+# Usage: opencode-alert <event> [message]
+# Events: permission, complete, error, question
+
+EVENT="${1:-unknown}"
+MESSAGE="${2:-OpenCode}"
+
+case "$EVENT" in
+  permission)
+    TITLE="OpenCode Permission Needed"
+    EMOJI="🔐"
+    ;;
+  complete)
+    TITLE="OpenCode Task Complete"
+    EMOJI="✅"
+    ;;
+  error)
+    TITLE="OpenCode Error"
+    EMOJI="❌"
+    ;;
+  question)
+    TITLE="OpenCode Question"
+    EMOJI="❓"
+    ;;
+  *)
+    TITLE="OpenCode"
+    EMOJI="🤖"
+    ;;
+esac
+
+if [ -f "/home/joshkosh/.local/share/Steam/steamui/sounds/deck_ui_achievement_toast.wav" ]; then
+    paplay /home/joshkosh/.local/share/Steam/steamui/sounds/deck_ui_achievement_toast.wav &
+elif command -v canberra-gtk-play &> /dev/null; then
+    canberra-gtk-play -i complete &
+fi
+
+if command -v notify-send &> /dev/null; then
+    notify-send "$TITLE" "$EMOJI $MESSAGE"
+fi
