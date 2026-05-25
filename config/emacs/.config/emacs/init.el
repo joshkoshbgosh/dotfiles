@@ -81,6 +81,34 @@
   (load-theme theme t))
 
 ;; ------------------------------
+;; Machine-specific paths
+;; ------------------------------
+(defvar my/workspace-dirs '("~/Workspace/" "~/Work/")
+  "Candidate workspace roots across machines.")
+
+(defun my/first-existing-dir (dirs)
+  "Return the first existing directory from DIRS, or nil."
+  (seq-find #'file-directory-p dirs))
+
+(defvar my/current-workspace-dir
+  (or (my/first-existing-dir my/workspace-dirs)
+      "~/Workspace/")
+  "Workspace root for the current machine.")
+
+(defvar my/lifeos-dir
+  (or (my/first-existing-dir
+       (mapcar (lambda (dir)
+                 (expand-file-name "lifeos/" dir))
+               my/workspace-dirs))
+      (expand-file-name "lifeos/" my/current-workspace-dir))
+  "LifeOS root for the current machine.")
+
+(defvar my/config-root-dir
+  (file-name-directory
+   (file-truename (or user-init-file load-file-name buffer-file-name)))
+  "Directory containing this Emacs config.")
+
+;; ------------------------------
 ;; Core QoL
 ;; ------------------------------
 (use-package emacs
@@ -142,6 +170,7 @@
   :commands (discover-my-major))
 
 (use-package transient
+  :straight (:type built-in)
   :demand t)
 
 ;; ------------------------------
@@ -400,7 +429,7 @@
   :demand t
   :init
   (setq project-list-file (expand-file-name "projects.eld" user-emacs-directory)
-        project-search-path (list (expand-file-name "~/Work")))
+        project-search-path (list (expand-file-name my/current-workspace-dir)))
   :config
   (my/leader
     "p"   '(:ignore t :which-key "project")
@@ -529,7 +558,9 @@
 
   ;; Quick access entries
   (setq dirvish-quick-access-entries
-        `(("w" "~/Work/"                    "Work")
+        `(("w" ,my/current-workspace-dir     ,(directory-file-name
+                                                (file-name-nondirectory
+                                                 (directory-file-name my/current-workspace-dir))))
           ("o" "~/org/"                     "Org")
           ("h" "~/"                         "Home")
           ("d" "~/Downloads/"               "Downloads")
@@ -599,17 +630,6 @@
   (if (fboundp 'discover-my-major)
       (discover-my-major)
     (describe-mode)))
-
-(defvar my/workspace-dirs '("~/Workspace/" "~/Work/")
-  "List of directories to search for projects on different machines.")
-
-(defvar my/current-workspace-dir
-  (catch 'found
-    (dolist (dir my/workspace-dirs)
-      (when (file-directory-p dir)
-        (throw 'found dir)))
-    "~/Workspace/")
-  "Current workspace directory based on machine.")
 
 (defun my/project-root ()
   "Return current project root, or nil if not in a project.
@@ -1152,7 +1172,7 @@ visible affordance."
 (use-package org
   :straight (:type built-in)
   :init
-  (setq org-directory (expand-file-name "~/Work/lifeos/")
+  (setq org-directory (expand-file-name my/lifeos-dir)
         org-hide-emphasis-markers t
         org-startup-indented t
         org-ellipsis " ▾"
@@ -1405,7 +1425,7 @@ visible affordance."
   :init
   (setq org-supertag-sync-directories (list org-directory)
         supertag-data-directory
-        (expand-file-name "org-supertag/" "/home/joshkosh/Work/dotfiles/config/emacs/.config/emacs/"))
+        (expand-file-name "org-supertag/" my/config-root-dir))
   :config
   (defun my/lifeos-supertag-initialize ()
     "Initialize org-supertag for the LifeOS directory."
