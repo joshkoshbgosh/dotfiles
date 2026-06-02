@@ -170,7 +170,8 @@
   :commands (discover-my-major))
 
 (use-package transient
-  :straight (:type built-in)
+  ;; Dirvish 2.3.x expects newer transient internals than Emacs 30.2 ships.
+  ;; Use the straight-managed package instead of the built-in copy.
   :demand t)
 
 ;; ------------------------------
