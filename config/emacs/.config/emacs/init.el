@@ -312,10 +312,10 @@
     "n"   '(:ignore t :which-key "notes")
     "n c" '(org-capture :which-key "capture")
     "n a" '(org-agenda :which-key "agenda")
-    "n d" '(my/lifeos-open-dashboard :which-key "dashboard")
+    "n d" '((lambda () (interactive) (org-agenda nil "d")) :which-key "dashboard")
     "n t" '(my/org-open-today :which-key "today")
-    "n h" '(my/lifeos-open-habits :which-key "habits")
-    "n r" '(my/lifeos-open-reviews :which-key "reviews")
+    "n h" '((lambda () (interactive) (org-agenda nil "h")) :which-key "habits")
+    "n r" '((lambda () (interactive) (org-agenda nil "r")) :which-key "reviews")
     "n f" '(org-roam-node-find :which-key "find node")
     "n i" '(org-roam-node-insert :which-key "insert link")
     "n g" '(org-roam-graph :which-key "graph")
@@ -1229,61 +1229,18 @@ visible affordance."
 
   (add-hook 'org-capture-prepare-final-hook 'org-id-get-create)
 
-  (let* ((inbox (expand-file-name "inbox.org" org-directory))
-         (tasks (expand-file-name "tasks.org" org-directory))
-         (projects (expand-file-name "projects.org" org-directory))
-         (goals (expand-file-name "goals.org" org-directory))
-         (milestones (expand-file-name "milestones.org" org-directory))
-         (habits (expand-file-name "habits.org" org-directory))
-         (routines (expand-file-name "routines.org" org-directory))
+  (let* ((lifeos (expand-file-name "lifeos.org" org-directory))
          (journal (expand-file-name "journal.org" org-directory))
          (goal-year (format-time-string "%Y")))
-    (setq org-default-notes-file inbox
-          org-agenda-files (list inbox tasks projects goals milestones habits routines)
-          org-refile-targets `((,tasks :maxlevel . 2)
-                               (,projects :maxlevel . 2)
-                               (,goals :maxlevel . 3)
-                               (,milestones :maxlevel . 2)
-                               (,habits :maxlevel . 2)
-                               (,routines :maxlevel . 2))
+    (setq org-default-notes-file lifeos
+          org-agenda-files (list lifeos)
+          org-refile-targets `((,lifeos :maxlevel . 3))
           org-outline-path-complete-in-steps nil
           org-refile-use-outline-path 'file
           org-enforce-todo-dependencies t
           org-cycle-hide-drawer-startup t
           org-hide-leading-stars t
           org-todo-keywords '((sequence "TODO(t)" "NEXT(n)" "WAITING(w)" "SOMEDAY(s)" "|" "DONE(d)" "CANCELLED(c)"))
-          org-capture-templates
-          `(("t" "Task" entry
-             (file+headline ,inbox "Tasks To Process")
-             "* TODO %? #task\n:PROPERTIES:\n:CREATED: %U\n:PROJECT_REF: \n:GOAL_REF: \n:CONTEXT: \n:DAILY_PRIORITY: \n:TIME_EST_HOURS: \n:END:\n"
-             :prepend t)
-            ("n" "Note" entry
-             (file+headline ,inbox "Notes To Process")
-             "* %? #note\n:PROPERTIES:\n:CREATED: %U\n:END:\n"
-             :prepend t)
-            ("p" "Project" entry
-             (file+headline ,projects "Projects")
-             "** TODO %? #project\n:PROPERTIES:\n:CREATED: %U\n:GOAL_REF: \n:PRIORITY_LEVEL: %^{Priority|low|medium|high|urgent}\n:REVIEW_FREQUENCY: 7\n:LAST_REVIEW:\n:NEXT_REVIEW:\n:END:\n"
-             :prepend t)
-            ("g" "Goal" entry
-             (file+headline ,goals ,goal-year)
-             "** TODO %? #goal\n:PROPERTIES:\n:CREATED: %U\n:YEAR: %<%Y>\n:QUARTER: %^{Quarter|Q1|Q2|Q3|Q4}\n:MONTH: %^{Month|January|February|March|April|May|June|July|August|September|October|November|December}\n:REVIEW_FREQUENCY: 30\n:END:\n"
-             :prepend t)
-            ("m" "Milestone" entry
-             (file+headline ,milestones goal-year)
-             "** TODO %? #milestone\n:PROPERTIES:\n:CREATED: %U\n:GOAL_REF: \n:YEAR: %<%Y>\n:END:\nDEADLINE: %^t\n"
-             :prepend t)
-            ("h" "Habit" entry
-             (file+headline ,habits "Habits")
-             "** TODO %? #habit\n:PROPERTIES:\n:CREATED: %U\n:GOAL_REF: \n:TRACKING_MODE: %^{Tracking mode|checklist|quantitative}\n:CADENCE: %^{Cadence|daily|weekly|custom}\n:TARGET_PER_WEEK: %^{Target per week|1|3|5|7}\n:START_DATE: %<%Y-%m-%d>\n:END:\n"
-             :prepend t)
-            ("r" "Routine" entry
-             (file+headline ,routines "Routine Inbox")
-             "** TODO %? #routine\n:PROPERTIES:\n:CREATED: %U\n:ROUTINE_TYPE: %^{Routine type|morning|evening}\n:CATEGORY: %^{Category|planning|physical|mental|hygiene|medication|wind-down|other}\n:REQUIRED: %^{Required|yes|no}\n:SEQUENCE_ORDER:\n:TIME_ESTIMATE:\n:PROMPT_TOKEN:\n:ALARM_CREATED: no\n:ALARM_SCHEDULED_FOR:\n:SNOOZE_UNTIL:\n:END:\n"
-             :prepend t)
-            ("j" "Journal (today)" entry
-             (file+olp+datetree ,journal)
-             "* Daily note\n:PROPERTIES:\n:ENERGY:\n:MOOD:\n:END:\n\n- Summary :: %?\n- Notes :: \n"))
           org-agenda-custom-commands
           (list
            `("d" "LifeOS dashboard"
@@ -1291,12 +1248,11 @@ visible affordance."
                       ((org-agenda-span 1)
                        (org-deadline-warning-days 7)
                        (org-agenda-overriding-header "Today")))
-              (alltodo ""
-                       ((org-agenda-overriding-header "Inbox And Tasks")
-                        (org-agenda-files (list ,inbox ,tasks))
-                        (org-super-agenda-groups
-                         '((:name "Inbox" :file-path "inbox.org")
-                           (:name "Overdue" :deadline past)
+               (alltodo ""
+                        ((org-agenda-overriding-header "Inbox And Tasks")
+                         (org-agenda-files (list ,lifeos))
+                         (org-super-agenda-groups
+                          '((:name "Overdue" :deadline past)
                            (:name "Due Today" :deadline today)
                            (:name "Scheduled Today" :scheduled today)
                            (:name "Next Actions" :todo "NEXT")
@@ -1304,9 +1260,9 @@ visible affordance."
                            (:name "Someday" :todo "SOMEDAY")
                            (:discard (:todo "DONE"))
                            (:discard (:todo "CANCELLED"))))))
-              (alltodo ""
-                       ((org-agenda-overriding-header "Projects")
-                        (org-agenda-files (list ,projects))
+               (alltodo ""
+                        ((org-agenda-overriding-header "Projects")
+                         (org-agenda-files (list ,lifeos))
                         (org-super-agenda-groups
                          '((:name "Active Projects" :todo "NEXT")
                            (:name "Waiting Projects" :todo "WAITING")
@@ -1314,21 +1270,21 @@ visible affordance."
                            (:name "Someday Projects" :todo "SOMEDAY")
                            (:discard (:todo "DONE"))
                            (:discard (:todo "CANCELLED"))))))))
-           `("n" "Next actions" todo "NEXT"
-             ((org-agenda-files (list ,tasks))))
-           `("w" "Waiting" todo "WAITING"
-             ((org-agenda-files (list ,tasks ,projects))))
+            `("n" "Next actions" todo "NEXT"
+              ((org-agenda-files (list ,lifeos))))
+            `("w" "Waiting" todo "WAITING"
+              ((org-agenda-files (list ,lifeos))))
            `("r" "Project reviews" alltodo ""
-             ((org-agenda-overriding-header "Project Reviews")
-              (org-agenda-files (list ,projects))
+              ((org-agenda-overriding-header "Project Reviews")
+               (org-agenda-files (list ,lifeos))
               (org-super-agenda-groups
                '((:name "Active Projects" :todo "NEXT")
                  (:name "Waiting Projects" :todo "WAITING")
                  (:name "Backlog Projects" :todo "TODO")
                  (:discard (:todo "DONE"))
                  (:discard (:todo "CANCELLED"))))))
-           `("h" "Habits" alltodo ""
-             ((org-agenda-files (list ,habits))
+            `("h" "Habits" alltodo ""
+              ((org-agenda-files (list ,lifeos))
               (org-agenda-overriding-header "Habits")
               (org-super-agenda-groups
                '((:name "Habits" :todo ("TODO" "NEXT" "WAITING" "SOMEDAY"))
@@ -1353,60 +1309,6 @@ visible affordance."
   (interactive)
   (find-file (my/lifeos-file name)))
 
-(defun my/lifeos-open-inbox ()
-  "Open inbox.org."
-  (interactive)
-  (my/lifeos-open-file "inbox.org"))
-
-(defun my/lifeos-open-tasks ()
-  "Open tasks.org."
-  (interactive)
-  (my/lifeos-open-file "tasks.org"))
-
-(defun my/lifeos-open-projects ()
-  "Open projects.org."
-  (interactive)
-  (my/lifeos-open-file "projects.org"))
-
-(defun my/lifeos-open-goals ()
-  "Open goals.org."
-  (interactive)
-  (my/lifeos-open-file "goals.org"))
-
-(defun my/lifeos-open-milestones ()
-  "Open milestones.org."
-  (interactive)
-  (my/lifeos-open-file "milestones.org"))
-
-(defun my/lifeos-open-habits-file ()
-  "Open habits.org."
-  (interactive)
-  (my/lifeos-open-file "habits.org"))
-
-(defun my/lifeos-open-routines ()
-  "Open routines.org."
-  (interactive)
-  (my/lifeos-open-file "routines.org"))
-
-(defun my/lifeos-open-journal ()
-  "Open journal.org."
-  (interactive)
-  (my/lifeos-open-file "journal.org"))
-
-(defun my/lifeos-open-dashboard ()
-  "Open the main LifeOS dashboard agenda."
-  (interactive)
-  (org-agenda nil "d"))
-
-(defun my/lifeos-open-habits ()
-  "Open the habits agenda view."
-  (interactive)
-  (org-agenda nil "h"))
-
-(defun my/lifeos-open-reviews ()
-  "Open the project review agenda view."
-  (interactive)
-  (org-agenda nil "r"))
 
 ;; Move completed items to "* Completed" heading in same file
 (defun my/org-archive-completed-to-completed-section ()
@@ -1455,23 +1357,152 @@ visible affordance."
   :config
   (org-roam-db-autosync-mode 1))
 
-(use-package org-supertag
-  :straight (:host github :repo "yibie/org-supertag")
+(use-package supertag
+  :straight (:host github :repo "yibie/supertag")
   :after org
+  :commands (supertag-setup supertag-reindex-org supertag-menu supertag-doctor)
   :init
-  (setq org-supertag-sync-directories (list org-directory)
-        supertag-data-directory
-        (expand-file-name "org-supertag/" my/config-root-dir))
-  :config
+  (setq supertag-data-directory
+        (expand-file-name ".supertag/" org-directory))
+  (unless (file-directory-p supertag-data-directory)
+    (make-directory supertag-data-directory t))
   (defun my/lifeos-supertag-initialize ()
-    "Initialize org-supertag for the LifeOS directory."
+    "Run the Supertag setup wizard for the LifeOS directory."
     (interactive)
-    (supertag-sync-full-initialize))
+    (supertag-setup))
 
   (defun my/lifeos-supertag-rescan ()
-    "Rescan LifeOS files into the org-supertag database."
+    "Reindex LifeOS files into the Supertag database."
     (interactive)
-    (supertag-sync-full-rescan)))
+    (supertag-reindex-org))
+
+  ;; LifeOS automation helpers (used by supertag rules; defined here so
+  ;; they survive restarts — rules reference them by symbol).
+  (defun my/lifeos-node-refs (node-id field-id)
+    "Return NODE-ID's FIELD-ID :node-reference value as a list of IDs."
+    (supertag-field-normalize-node-reference-list
+     (supertag-node-get-global-field node-id field-id)))
+
+  (defun my/lifeos-task-ids ()
+    "Return IDs of all nodes tagged #task."
+    (supertag-query-node-ids-by-tag "task"))
+
+  (defun my/lifeos-tasks-referencing (field-id target-id)
+    "Return #task node IDs whose FIELD-ID references TARGET-ID."
+    (cl-loop for tid in (my/lifeos-task-ids)
+             when (member target-id (my/lifeos-node-refs tid field-id))
+             collect tid))
+
+  (defun my/lifeos-rollup-task-project (node-id &rest _context)
+    "Sum ACTUAL_MINUTES of sibling tasks into their project's TOTAL_MINUTES.
+Also refreshes the project's OPEN_TASKS count. Runs when a task's
+actual_minutes field changes."
+    (dolist (pid (my/lifeos-node-refs node-id "project"))
+      (let ((siblings (my/lifeos-tasks-referencing "project" pid))
+            (total 0) (open 0))
+        (dolist (tid siblings)
+          (setq total (+ total (or (supertag-node-get-global-field tid "actual_minutes") 0)))
+          (let ((todo (plist-get (supertag-node-get tid) :todo)))
+            (unless (member todo '("DONE" "CANCELLED" "CANCELED"))
+              (setq open (1+ open)))))
+        (supertag-node-set-global-field pid "total_minutes" total)
+        (supertag-node-set-global-field pid "open_tasks" open)
+        (message "LifeOS: project %s rollup total_minutes=%s open_tasks=%s"
+                 pid total open))))
+
+  (defun my/lifeos-task-completed (node-id &rest _context)
+    "On task DONE: unblock dependents and maybe complete its project."
+    ;; Unblock dependents.
+    (dolist (dep-id (my/lifeos-tasks-referencing "blocked_by" node-id))
+      (message "LifeOS: %s unblocked by completion of %s"
+               (plist-get (supertag-node-get dep-id) :title)
+               (plist-get (supertag-node-get node-id) :title)))
+    ;; Project completion check.
+    (dolist (pid (my/lifeos-node-refs node-id "project"))
+      (let ((siblings (my/lifeos-tasks-referencing "project" pid))
+            (all-done t))
+        (dolist (tid siblings)
+          (unless (member (plist-get (supertag-node-get tid) :todo)
+                          '("DONE" "CANCELLED" "CANCELED"))
+            (setq all-done nil)))
+        (when (and all-done siblings)
+          (supertag-node-set-global-field pid "status" "Done")
+          (message "LifeOS: project %s all tasks done — status set to Done" pid)))))
+
+  (defun my/lifeos-flag-due-reviews (&rest _ignored)
+    "List projects whose review is due (for the nightly scheduled rule)."
+    (interactive)
+    (let ((now (current-time)) (due '()))
+      (dolist (nid (supertag-query-node-ids-by-tag "project"))
+        (let ((last (supertag-node-get-global-field nid "last_review"))
+              (every (supertag-node-get-global-field nid "review_every_days")))
+          (when (and last every (> every 0))
+            (let ((next (time-add last (days-to-time every))))
+              (when (time-less-p next now)
+                (push (plist-get (supertag-node-get nid) :title) due))))))
+      (if due
+          (message "LifeOS: review due for: %s" (string-join due ", "))
+        (message "LifeOS: no project reviews due"))))
+
+  (defun my/lifeos-clock-out-rollup ()
+    "On clock-out, add clocked minutes to the heading's task ACTUAL_MINUTES.
+Fires the rollup rule, so project totals update automatically. No-op
+when the clocked heading is not a #task node."
+    (when (and (boundp 'org-clock-start-time) org-clock-start-time)
+      (let ((mins (round (/ (float-time
+                             (time-subtract (current-time) org-clock-start-time))
+                            60))))
+        (when (and (> mins 0) (org-id-get))
+          (let ((node (supertag-node-get (org-id-get))))
+            (when (and node (member "task" (plist-get node :tags)))
+              (let ((id (plist-get node :id)))
+                (supertag-node-set-global-field
+                 id "actual_minutes"
+                 (+ (or (supertag-node-get-global-field id "actual_minutes") 0)
+                    mins))
+                (message "LifeOS: +%d min clocked on %s"
+                         mins (plist-get node :title)))))))))
+  (add-hook 'org-clock-out-hook #'my/lifeos-clock-out-rollup)
+
+  (defun my/lifeos-blocked-tasks ()
+    "Return #task nodes that have blockers which are not DONE.
+The query grammar cannot test field presence, so this is a helper
+for views / reviews. Interactive: lists them in Messages."
+    (interactive)
+    (let ((blocked '()))
+      (dolist (tid (my/lifeos-task-ids))
+        (let ((blockers (my/lifeos-node-refs tid "blocked_by")))
+          (when (cl-some (lambda (bid)
+                           (not (member (plist-get (supertag-node-get bid) :todo)
+                                        '("DONE" "CANCELLED" "CANCELED"))))
+                         blockers)
+            (push tid blocked))))
+      (when (called-interactively-p 'any)
+        (if blocked
+            (message "LifeOS blocked: %s"
+                     (string-join (mapcar (lambda (id) (plist-get (supertag-node-get id) :title)) blocked) ", "))
+          (message "LifeOS: nothing blocked")))
+      blocked))
+  :config
+  (supertag-smart-key-mode 1)
+  ;; Nightly review-nudge rule needs the scheduler running.
+  (when (fboundp 'supertag-scheduler-start)
+    (supertag-scheduler-start))
+  ;; Supertag views define their own single-key keymaps, which Evil's
+  ;; normal state shadows (e.g. `a' becoming evil-append). Give every
+  ;; supertag view Emacs state instead of mirroring keys one by one --
+  ;; this scales to new views without per-key maintenance.
+  ;; NOTE: do not use the evil-define-key macro with loop variables
+  ;; here; it silently installs nil bindings. evil-set-initial-state
+  ;; is a plain function and safe.
+  (with-eval-after-load 'evil
+    (dolist (mode '(supertag-schema-view-mode
+                    supertag-view-table-mode
+                    supertag-view-stream-mode
+                    supertag-view-node-mode
+                    supertag-view-kanban-mode
+                    supertag-view-widget-mode))
+      (evil-set-initial-state mode 'emacs)))
 
 ;; ------------------------------
 ;; Org extras: search, navigation, notifications, pomodoro
@@ -1545,14 +1576,6 @@ visible affordance."
 (with-eval-after-load 'general
   (my/leader
     "n v" '(my/calfw-open :which-key "calendar")
-    "n I" '(my/lifeos-open-inbox :which-key "inbox")
-    "n T" '(my/lifeos-open-tasks :which-key "tasks")
-    "n P" '(my/lifeos-open-projects :which-key "projects")
-    "n G" '(my/lifeos-open-goals :which-key "goals")
-    "n M" '(my/lifeos-open-milestones :which-key "milestones")
-    "n H" '(my/lifeos-open-habits-file :which-key "habits")
-    "n R" '(my/lifeos-open-routines :which-key "routines")
-    "n J" '(my/lifeos-open-journal :which-key "journal")
     "n u" '(my/lifeos-supertag-initialize :which-key "supertag init")
     "n U" '(my/lifeos-supertag-rescan :which-key "supertag rescan")))
 
@@ -1578,7 +1601,7 @@ visible affordance."
         spec-file)))
 
   (defun my/openspec-capture-project ()
-    "Capture a TODO into the current project's openspec-project.org file, or fall back to tasks.org."
+    "Capture a TODO into the current project's openspec-project.org file, or fall back to lifeos.org."
     (interactive)
     (if-let* ((proj (project-current))
               (root (project-root proj))
@@ -1601,7 +1624,7 @@ visible affordance."
               (spec-dir (expand-file-name "openspec/" root))
               (todo-file (expand-file-name "project-todos.org" spec-dir)))
         (find-file todo-file)
-      (find-file (expand-file-name "tasks.org" org-directory))))
+      (find-file (expand-file-name "lifeos.org" org-directory))))
 
   (with-eval-after-load 'general
     (my/leader
@@ -1731,11 +1754,14 @@ visible affordance."
      "dd4582661a1c6b865a33b89312c97a13a3885dc95992e2e5fc57456b4c545176"
      "4594d6b9753691142f02e67b8eb0fda7d12f6cc9f1299a49b819312d6addad1d"
      default))
+ '(supertag-file-id-source 'org-roam)
+ '(supertag-sync-directories '("/home/joshkosh/Work/lifeos/"))
  '(warning-suppress-types '((initialization))))
 (custom-set-faces
  ;; custom-set-faces was added by Custom.
  ;; If you edit it by hand, you could mess it up, so be careful.
  ;; Your init file should contain only one such instance.
  ;; If there is more than one, they won't work right.
- )
+ '(mode-line ((t :height 1.1)))
+ '(mode-line-inactive ((t :height 1.1))))
 ;; fave themes so far: doom-challenger-deep, doom-manegarm, doom-ayu-dark, doom-horizon, doom-dracula, doom-lantern, doom-monokai-pro, doom-moonlight, doom-one, doom-gruvbox
