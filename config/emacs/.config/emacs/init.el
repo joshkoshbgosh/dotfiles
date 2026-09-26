@@ -549,7 +549,9 @@
   :init
   ;; Work around a known native-comp warning in dirvish-extras.el.
   (when (boundp 'native-comp-jit-compilation-deny-list)
-    (add-to-list 'native-comp-jit-compilation-deny-list "dirvish-extras\\.el\\'"))
+    (add-to-list 'native-comp-jit-compilation-deny-list "dirvish-extras\\.el\\'")
+    (add-to-list 'native-comp-jit-compilation-deny-list "transient--recursive-edit")
+    (add-to-list 'native-comp-jit-compilation-deny-list "dimmer"))
   ;; Keep dired-native workflow; enhance UI with Dirvish.
   (dirvish-override-dired-mode 1)
   :config
@@ -1502,7 +1504,7 @@ for views / reviews. Interactive: lists them in Messages."
                     supertag-view-node-mode
                     supertag-view-kanban-mode
                     supertag-view-widget-mode))
-      (evil-set-initial-state mode 'emacs)))
+      (evil-set-initial-state mode 'emacs))))
 
 ;; ------------------------------
 ;; Org extras: search, navigation, notifications, pomodoro
