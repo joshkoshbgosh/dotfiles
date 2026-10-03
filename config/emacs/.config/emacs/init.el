@@ -1684,7 +1684,7 @@ for views / reviews. Interactive: lists them in Messages."
     "t p"  '(my/toggle-vertico-posframe :which-key "toggle posframe")))
 
 ;; Bigger text + more breathing room
-(set-face-attribute 'default nil :family "JetBrains Mono" :height 160) ; 16pt-ish
+(set-face-attribute 'default nil :family "JetBrainsMono Nerd Font" :height 160) ; 16pt-ish
 (setq-default line-spacing 0.15)
 (set-fringe-mode 16)
 
