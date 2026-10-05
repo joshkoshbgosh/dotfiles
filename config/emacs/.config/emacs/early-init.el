@@ -1,4 +1,4 @@
-;;; early-init.el --- early startup tweaks -*- lexical-binding: t; -*-
+;; -*- lexical-binding: t -*-
 
 ;; Faster startup / less UI junk early
 (setq package-enable-at-startup nil)
