@@ -47,7 +47,6 @@
 
 ;; --- projects ---
 (my/load-module "projects/project")
-(my/load-module "projects/persp-mode")
 
 ;; --- git ---
 (my/load-module "git/magit")
@@ -81,6 +80,12 @@
 (my/load-module "org/org-modern")
 (my/load-module "org/org-appear")
 (my/load-module "org/org-roam")
+(my/load-module "org/lifeos-planning")
+(my/load-module "org/lifeos-forecast")
+(my/load-module "org/lifeos-schedule")
+(my/load-module "org/lifeos-solver")
+(my/load-module "org/lifeos-agenda")
+(my/load-module "org/lifeos-supertag")
 (my/load-module "org/supertag")
 (my/load-module "org/org-ql")
 (my/load-module "org/org-super-agenda")
@@ -90,13 +95,16 @@
 (my/load-module "org/org-agenda-property")
 (my/load-module "org/org-pomodoro")
 (my/load-module "org/org-sidebar")
+(my/load-module "org/org-gcal")
 (my/load-module "org/calfw")
 (my/load-module "org/calfw-org")
-(my/load-module "org/org-time-budgets")
 (my/load-module "org/openspec")
 
 ;; --- markdown ---
 (my/load-module "markdown/markdown-mode")
+
+;; Restore saved buffers after their major modes are available.
+(my/load-module "projects/persp-mode")
 
 ;; --- pdf ---
 (my/load-module "pdf/pdf-tools")

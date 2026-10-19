@@ -1,0 +1,56 @@
+name: LifeOS
+
+on:
+  push:
+    paths:
+      - "lifeos-solver/**"
+      - "config/emacs/.config/emacs/org/**"
+      - ".github/workflows/lifeos.yml"
+  pull_request:
+    paths:
+      - "lifeos-solver/**"
+      - "config/emacs/.config/emacs/org/**"
+      - ".github/workflows/lifeos.yml"
+
+jobs:
+  solver:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: lifeos-solver/package-lock.json
+      - run: npm ci
+        working-directory: lifeos-solver
+      - run: npm run check
+        working-directory: lifeos-solver
+      - run: npm run build
+        working-directory: lifeos-solver
+      - run: npm test
+        working-directory: lifeos-solver
+      - run: npm audit --audit-level=moderate
+        working-directory: lifeos-solver
+
+  emacs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: lifeos-solver/package-lock.json
+      - run: npm ci
+        working-directory: lifeos-solver
+      - run: sudo apt-get update && sudo apt-get install --yes emacs-nox
+      - name: Run focused ERT suite
+        run: >-
+          emacs --batch -Q
+          -l config/emacs/.config/emacs/org/lifeos-planning-test.el
+          -l config/emacs/.config/emacs/org/lifeos-supertag-test.el
+          -l config/emacs/.config/emacs/org/org-gcal-test.el
+          -l config/emacs/.config/emacs/org/lifeos-solver-test.el
+          -l config/emacs/.config/emacs/org/lifeos-agenda-test.el
+          -f ert-run-tests-batch-and-exit

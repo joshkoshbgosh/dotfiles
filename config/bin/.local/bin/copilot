@@ -1,2 +1,4 @@
 #!/bin/bash
-exec mise exec node@latest -- npx --yes @github/copilot "$@"
+export MISE_MINIMUM_RELEASE_AGE=0
+mise use -g --quiet "copilot" || exit 1
+exec mise x "copilot" -- "copilot" "$@"

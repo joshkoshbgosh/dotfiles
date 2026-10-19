@@ -1,2 +1,4 @@
 #!/bin/bash
-exec mise exec node@latest -- npx --yes @google/gemini-cli "$@"
+export MISE_MINIMUM_RELEASE_AGE=0
+mise use -g --quiet "gemini" || exit 1
+exec mise x "gemini" -- "gemini" "$@"

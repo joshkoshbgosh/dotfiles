@@ -1,2 +1,4 @@
 #!/bin/bash
-exec mise exec node@latest -- npx --yes opencode-ai "$@"
+export MISE_MINIMUM_RELEASE_AGE=0
+mise use -g --quiet "opencode" || exit 1
+exec mise x "opencode" -- "opencode" "$@"

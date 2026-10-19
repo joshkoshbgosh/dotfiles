@@ -1,0 +1,24 @@
+{
+  "status": "ok",
+  "feasibility": "PROVEN FEASIBLE",
+  "safety": "SAFE",
+  "placementTaskIds": ["research", "draft"],
+  "placementKinds": ["proposed", "proposed"],
+  "intentionAllocatedMinutes": {
+    "essay-intention": 150,
+    "philosophy": 150
+  },
+  "stressResults": [],
+  "portfolioDefinitionStatus": "COMPLETE",
+  "modeledProjectIds": ["essay"],
+  "projectStatuses": [
+    {
+      "projectId": "essay",
+      "definitionStatus": "DETAILED",
+      "isolatedFeasibility": "FEASIBLE",
+      "proofKind": "STRUCTURALLY FEASIBLE",
+      "portfolioStatus": "FITS"
+    }
+  ],
+  "negotiationResults": []
+}

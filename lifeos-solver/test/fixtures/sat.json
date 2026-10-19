@@ -1,0 +1,120 @@
+{
+  "protocolVersion": "lifeos-planning/v3",
+  "requestId": "sat-fixture",
+  "horizon": { "start": 0, "end": 600 },
+  "schedulingQuantumMinutes": 15,
+  "timeoutMs": 5000,
+  "calendarCoverageEnd": 600,
+  "availabilityCoverageEnd": 600,
+  "defaultSafetyBufferMinutes": 30,
+  "hardIssues": [],
+  "safetyIssues": [],
+  "inputAssumptions": [],
+  "tasks": [
+    {
+      "id": "research",
+      "projectId": "essay",
+      "durationMinutes": 60,
+      "workMode": "Deep",
+      "deadline": 480,
+      "fixedStart": null,
+      "preferredStart": null,
+      "prerequisiteIds": [],
+      "state": "TODO",
+      "priority": "A",
+      "impact": "High",
+      "mandatory": true,
+      "unresolvedWaiting": false,
+      "evidence": { "sourceId": "org:research", "kind": "task" }
+    },
+    {
+      "id": "draft",
+      "projectId": "essay",
+      "durationMinutes": 90,
+      "workMode": "Deep",
+      "deadline": 480,
+      "fixedStart": null,
+      "preferredStart": null,
+      "prerequisiteIds": ["research"],
+      "state": "NEXT",
+      "priority": "A",
+      "impact": "High",
+      "mandatory": true,
+      "unresolvedWaiting": false,
+      "evidence": { "sourceId": "org:draft", "kind": "task" }
+    },
+    {
+      "id": "optional-reading",
+      "projectId": null,
+      "durationMinutes": 45,
+      "workMode": "Deep",
+      "deadline": null,
+      "fixedStart": null,
+      "preferredStart": null,
+      "prerequisiteIds": [],
+      "state": "TODO",
+      "priority": "B",
+      "impact": "Medium",
+      "mandatory": false,
+      "unresolvedWaiting": false,
+      "evidence": { "sourceId": "org:reading", "kind": "task" }
+    }
+  ],
+  "projects": [
+    {
+      "id": "essay",
+      "deadline": 480,
+      "safetyBufferMinutes": 30,
+      "evidence": { "sourceId": "org:essay", "kind": "project" },
+      "definitionStatus": "DETAILED",
+      "commitment": "COMMITTED",
+      "projectEffortMinutes": 150,
+      "explicitEffortMinutes": 150,
+      "remainingExplicitEffortMinutes": 150,
+      "virtualEffortMinutes": 0,
+      "defaultWorkMode": null,
+      "planningChunkMinutes": null,
+      "estimateConfidence": null,
+      "diagnostics": []
+    }
+  ],
+  "availability": [
+    { "id": "deep-window", "start": 60, "end": 540, "modes": ["Deep"], "kind": "availability" }
+  ],
+  "busy": [
+    { "id": "appointment-travel", "start": 210, "end": 270, "kind": "travel", "evidence": { "sourceId": "cal:event-1", "kind": "travel-default", "detail": "normalized conservative default" } }
+  ],
+  "sleep": [],
+  "reserve": [
+    { "id": "daily-reserve", "envelopeStart": 60, "envelopeEnd": 540, "minimumMinutes": 30, "evidence": { "sourceId": "planning:reserve", "kind": "daily-reserve" } }
+  ],
+  "intentions": [
+    {
+      "id": "philosophy",
+      "name": "Philosophy",
+      "minimumMinutes": 60,
+      "targetMinutes": 120,
+      "maximumMinutes": 240,
+      "actualMinutes": 0,
+      "windowStart": 0,
+      "windowEnd": 600,
+      "matchedTaskIds": ["research", "draft", "optional-reading"],
+      "matchEvidence": [{ "sourceId": "planning:philosophy", "kind": "selector", "detail": "(project-tag philosophy)" }]
+    },
+    {
+      "id": "essay-intention",
+      "name": "Essay",
+      "minimumMinutes": 60,
+      "targetMinutes": 150,
+      "maximumMinutes": null,
+      "actualMinutes": 0,
+      "windowStart": 0,
+      "windowEnd": 600,
+      "matchedTaskIds": ["research", "draft"],
+      "matchEvidence": [{ "sourceId": "planning:essay", "kind": "selector", "detail": "(project-id essay)" }]
+    }
+  ],
+  "stressProfiles": [],
+  "scenario": null,
+  "candidate": null
+}
