@@ -24,12 +24,15 @@
 (defvar my/org-gcal-fetch-in-progress nil
   "Non-nil while a Google Calendar import is running.")
 
+<<<<<<< HEAD
 (defvar my/org-gcal-configured-p nil
   "Non-nil after org-gcal authentication settings are loaded this session.")
 
 (defvar my/org-gcal-last-poll-error nil
   "Most recent background calendar polling error, or nil.")
 
+=======
+>>>>>>> c638f20 (update)
 (defvar my/org-gcal-last-successful-fetch-time nil
   "Time of the latest org-gcal fetch that completed successfully.")
 
@@ -39,8 +42,11 @@
 (defvar org-gcal-down-days 60
   "Future days requested from org-gcal; declared here for pre-load fetch evidence.")
 
+<<<<<<< HEAD
 (setq plstore-cache-passphrase-for-symmetric-encryption t)
 
+=======
+>>>>>>> c638f20 (update)
 (setq org-gcal-remove-api-cancelled-events t
       org-gcal-remove-events-with-cancelled-todo t)
 
@@ -98,7 +104,10 @@ dotfiles repository."
     (setq org-gcal-client-id client-id
           org-gcal-client-secret client-secret
           my/org-gcal-calendar-role-alist calendars
+<<<<<<< HEAD
           my/org-gcal-configured-p nil
+=======
+>>>>>>> c638f20 (update)
           org-gcal-fetch-file-alist
           (mapcar (lambda (entry)
                     (cons (car entry) my/org-gcal-calendar-file))
@@ -172,12 +181,19 @@ dotfiles repository."
 
 (defun my/org-gcal--prepare-package ()
   "Configure and load org-gcal with current OAuth credentials."
+<<<<<<< HEAD
   (unless my/org-gcal-configured-p
     (my/org-gcal-configure)
     (require 'org-gcal)
     (when (fboundp 'org-gcal-reload-client-id-secret)
       (org-gcal-reload-client-id-secret))
     (setq my/org-gcal-configured-p t)))
+=======
+  (my/org-gcal-configure)
+  (require 'org-gcal)
+  (when (fboundp 'org-gcal-reload-client-id-secret)
+    (org-gcal-reload-client-id-secret)))
+>>>>>>> c638f20 (update)
 
 (defun my/org-gcal--record-successful-fetch (&optional fetched-at)
   "Record FETCHED-AT and the coverage implied by `org-gcal-down-days'."
@@ -207,7 +223,10 @@ dotfiles repository."
                             (find-file-noselect my/org-gcal-calendar-file)
                           (save-buffer))
                         (my/org-gcal--record-successful-fetch)
+<<<<<<< HEAD
                         (setq my/org-gcal-last-poll-error nil)
+=======
+>>>>>>> c638f20 (update)
                         (when (fboundp 'my/lifeos-invalidate-project-analysis)
                           (my/lifeos-invalidate-project-analysis))
                         result)))
@@ -230,6 +249,7 @@ dotfiles repository."
   (org-gcal-sync-tokens-clear)
   (my/org-gcal-fetch))
 
+<<<<<<< HEAD
 (define-error 'my/org-gcal-authentication-required
   "Google Calendar authentication requires an explicit fetch" 'user-error)
 
@@ -253,11 +273,19 @@ dotfiles repository."
 
 (defun my/org-gcal-start-polling ()
   "Poll every fifteen minutes after one explicit successful fetch."
+=======
+(defun my/org-gcal-start-polling ()
+  "Start one fetch shortly after startup and every fifteen minutes."
+>>>>>>> c638f20 (update)
   (interactive)
   (when (timerp my/org-gcal-fetch-timer)
     (cancel-timer my/org-gcal-fetch-timer))
   (setq my/org-gcal-fetch-timer
+<<<<<<< HEAD
         (run-at-time (* 15 60) (* 15 60) #'my/org-gcal--poll)))
+=======
+        (run-at-time 5 (* 15 60) #'my/org-gcal-fetch)))
+>>>>>>> c638f20 (update)
 
 (use-package org-gcal
   :straight t

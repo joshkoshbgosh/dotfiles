@@ -141,13 +141,10 @@ approval.
 
 ## Calendar
 
-After one explicit successful fetch in an Emacs session, org-gcal imports into
-`calendar.org` every 15 minutes. Background polling reuses cached configuration
-and cannot prompt for passwords or open an authentication browser. Authentication
-failure is reported for explicit recovery. Overlapping imports are skipped.
-Successful changes are normalized and saved before the shared analysis cache is
-invalidated. Full refresh clears sync tokens; cancelled events are removed
-unattended.
+org-gcal imports into `calendar.org` five seconds after startup and every 15
+minutes. Overlapping imports are skipped. Successful changes are normalized and
+saved before the shared analysis cache is invalidated. Full refresh clears sync
+tokens; cancelled events are removed unattended.
 
 - Busy timed events block their exact interval.
 - Busy all-day events block the local day.
