@@ -65,8 +65,20 @@
             (should (string-match-p "Ready" text))
             (should-not (string-match-p "Blocked" text)))
           (goto-char (point-min))
-          (forward-line 1)
-          (should (eq (marker-buffer (org-get-at-bol 'org-marker)) source)))))))
+           (forward-line 1)
+           (should (eq (marker-buffer (org-get-at-bol 'org-marker)) source)))))))
+
+(ert-deftest my/lifeos-agenda-routines-shows-every-daily-period ()
+  (my/lifeos-agenda-test-with-buffers
+    (with-current-buffer agenda
+      (cl-letf (((symbol-function 'my/lifeos-agenda--routine-records)
+                 (lambda (period)
+                   (list (list :state "TODO" :title (capitalize period))))))
+        (my/lifeos-agenda-routines ""))
+      (let ((text (buffer-string)))
+        (should (string-match-p "Morning routine" text))
+        (should (string-match-p "Afternoon routine" text))
+        (should (string-match-p "Evening routine" text))))))
 
 (ert-deftest my/lifeos-agenda-status-renders-computed-meta-values ()
   (my/lifeos-agenda-test-with-buffers

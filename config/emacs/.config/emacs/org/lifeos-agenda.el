@@ -233,17 +233,10 @@
                'rear-nonsticky t))))
     (insert "\n")))
 
-(defun my/lifeos-agenda--current-routine-tag ()
-  "Return the routine period appropriate for the current hour."
-  (let ((hour (string-to-number (format-time-string "%H"))))
-    (cond ((< hour 12) "morning")
-          ((< hour 17) "afternoon")
-          (t "evening"))))
-
-(defun my/lifeos-agenda--routine-records ()
-  "Return active routine headings for the current part of day."
+(defun my/lifeos-agenda--routine-records (period)
+  "Return active routine headings for day-part PERIOD."
   (let ((file (expand-file-name "routines.org" org-directory))
-        (period (my/lifeos-agenda--current-routine-tag)) records)
+        records)
     (when (file-readable-p file)
       (with-current-buffer (find-file-noselect file)
         (org-with-wide-buffer
@@ -260,19 +253,20 @@
     (nreverse records)))
 
 (defun my/lifeos-agenda-routines (_match)
-  "Insert the current compact routine block."
-  (let ((inhibit-read-only t)
-        (records (my/lifeos-agenda--routine-records)))
-    (my/lifeos-agenda--insert-header
-     (format "%s routine" (capitalize (my/lifeos-agenda--current-routine-tag))))
-    (if records
-        (dolist (record records)
-          (my/lifeos-agenda--insert-heading-row
-           (format "%-7s %s" (plist-get record :state)
-                   (plist-get record :title))
-           (plist-get record :marker)))
-      (my/lifeos-agenda--insert-empty "No remaining routine items."))
-    (insert "\n")))
+  "Insert compact morning, afternoon, and evening routine blocks."
+  (let ((inhibit-read-only t))
+    (dolist (period '("morning" "afternoon" "evening"))
+      (let ((records (my/lifeos-agenda--routine-records period)))
+        (my/lifeos-agenda--insert-header
+         (format "%s routine" (capitalize period)))
+        (if records
+            (dolist (record records)
+              (my/lifeos-agenda--insert-heading-row
+               (format "%-7s %s" (plist-get record :state)
+                       (plist-get record :title))
+               (plist-get record :marker)))
+          (my/lifeos-agenda--insert-empty "No remaining routine items."))
+        (insert "\n")))))
 
 (defun my/lifeos-agenda--solver-pair (analysis)
   "Return solver result and context suitable for dashboard ANALYSIS."
@@ -288,6 +282,9 @@
 (defun my/lifeos-agenda--calendar-status ()
   "Return a compact calendar freshness label."
   (cond
+   ((eq (bound-and-true-p my/org-gcal-last-poll-error)
+        'authentication-required)
+    "AUTH REQUIRED")
    ((and (boundp 'my/org-gcal-fetch-in-progress)
          my/org-gcal-fetch-in-progress)
     "FETCHING")

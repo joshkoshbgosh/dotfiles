@@ -141,10 +141,13 @@ approval.
 
 ## Calendar
 
-org-gcal imports into `calendar.org` five seconds after startup and every 15
-minutes. Overlapping imports are skipped. Successful changes are normalized and
-saved before the shared analysis cache is invalidated. Full refresh clears sync
-tokens; cancelled events are removed unattended.
+After one explicit successful fetch in an Emacs session, org-gcal imports into
+`calendar.org` every 15 minutes. Background polling reuses cached configuration
+and cannot prompt for passwords or open an authentication browser. Authentication
+failure is reported for explicit recovery. Overlapping imports are skipped.
+Successful changes are normalized and saved before the shared analysis cache is
+invalidated. Full refresh clears sync tokens; cancelled events are removed
+unattended.
 
 - Busy timed events block their exact interval.
 - Busy all-day events block the local day.
@@ -316,6 +319,6 @@ All Emacs paths are below `config/emacs/.config/emacs/`.
 
 ## Verification
 
-Use the commands in [`README.md`](../README.md). The 2026-10-17 verified baseline
-is 163/163 ERT, 8/8 documentation ERT, and 51/51 Vitest; TypeScript check/build
+Use the commands in [`README.md`](../README.md). The 2026-10-19 verified baseline
+is 167/167 ERT, 8/8 documentation ERT, and 51/51 Vitest; TypeScript check/build
 pass and the moderate-or-higher npm audit reports zero vulnerabilities.
