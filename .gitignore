@@ -4,6 +4,7 @@
 **/*token*
 **/*secret*
 **/*key*
+!/config/emacs/.config/emacs/core/which-key.el
 **/*.pem
 **/id_rsa*
 **/id_ed25519*
