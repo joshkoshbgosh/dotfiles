@@ -5,6 +5,7 @@
 (require 'json)
 (require 'org)
 (require 'seq)
+(require 'subr-x)
 
 (defconst my/org-gcal-calendar-file
   (expand-file-name "calendar.org" org-directory))
@@ -37,12 +38,18 @@
   "Time of the latest org-gcal fetch that completed successfully.")
 
 (defvar my/org-gcal-calendar-coverage-end nil
-  "Exclusive end of calendar coverage established by the latest successful fetch.")
+  "Verified exclusive coverage end; nil until recurrence completeness is proven.")
 
 (defvar org-gcal-down-days 60
   "Future days requested from org-gcal; declared here for pre-load fetch evidence.")
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+(defvar org-gcal-up-days 7
+  "Past days requested from org-gcal; declared here for pre-load fetch evidence.")
+
+>>>>>>> fb56d00 (Record org-gcal fetch evidence without claiming coverage)
 (setq plstore-cache-passphrase-for-symmetric-encryption t)
 
 =======
@@ -196,11 +203,37 @@ dotfiles repository."
 >>>>>>> c638f20 (update)
 
 (defun my/org-gcal--record-successful-fetch (&optional fetched-at)
-  "Record FETCHED-AT and the coverage implied by `org-gcal-down-days'."
+  "Record FETCHED-AT and requested window, NOT verified availability coverage.
+
+org-gcal may swallow individual entry errors, and incremental sync does not
+certify complete recurrence instances.  This receipt is untrusted for free time."
   (let ((fetched-at (or fetched-at (current-time))))
+    (let* ((receipt-file (concat my/org-gcal-calendar-file ".sync-receipt.json"))
+      (temp-file (make-temp-file (concat receipt-file ".") nil ".tmp"))
+      (sha256 (with-temp-buffer
+                (insert-file-contents-literally my/org-gcal-calendar-file)
+                (secure-hash 'sha256 (current-buffer)))))
+      (unwind-protect
+          (progn
+            (with-current-buffer (find-file-noselect my/org-gcal-calendar-file)
+              (unless (and (not (buffer-modified-p))
+                           (equal sha256 (secure-hash 'sha256 (current-buffer))))
+                (error "Saved calendar differs from fetched/normalized buffer")))
+            (with-temp-file temp-file
+              (insert (json-encode
+                       `((version . 2)
+                         (availability . "unverified")
+                         (sha256 . ,sha256)
+                         (fetchedAt . ,(format-time-string "%Y-%m-%dT%H:%M:%SZ" fetched-at t))
+                         (requestedStart . ,(format-time-string "%Y-%m-%dT%H:%M:%SZ"
+                                                               (time-subtract fetched-at (days-to-time org-gcal-up-days)) t))
+                         (requestedEnd . ,(format-time-string "%Y-%m-%dT%H:%M:%SZ"
+                                                             (time-add fetched-at (days-to-time org-gcal-down-days)) t))))))
+            (set-file-modes temp-file #o600)
+            (rename-file temp-file receipt-file t))
+        (when (file-exists-p temp-file) (delete-file temp-file))))
     (setq my/org-gcal-last-successful-fetch-time fetched-at
-          my/org-gcal-calendar-coverage-end
-          (time-add fetched-at (days-to-time org-gcal-down-days)))))
+          my/org-gcal-calendar-coverage-end nil)))
 
 (defun my/org-gcal-fetch ()
   "Fetch Google Calendar events without pushing local changes."

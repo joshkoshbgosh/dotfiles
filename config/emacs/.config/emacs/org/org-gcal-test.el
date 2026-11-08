@@ -103,6 +103,8 @@
       (when-let* ((buffer (get-file-buffer file)))
         (set-buffer-modified-p nil)
         (kill-buffer buffer))
+      (when (file-exists-p (concat file ".sync-receipt.json"))
+        (delete-file (concat file ".sync-receipt.json")))
       (delete-file file))))
 
 (ert-deftest my/org-gcal-polling-is-idempotent ()
@@ -197,6 +199,8 @@
       (when-let* ((buffer (get-file-buffer file)))
         (set-buffer-modified-p nil)
         (kill-buffer buffer))
+      (when (file-exists-p (concat file ".sync-receipt.json"))
+        (delete-file (concat file ".sync-receipt.json")))
       (delete-file file))))
 
 (ert-deftest my/org-gcal-success-invalidates-unchanged-calendar-coverage ()
@@ -240,16 +244,69 @@
   (should (eq org-gcal-remove-api-cancelled-events t))
   (should (eq org-gcal-remove-events-with-cancelled-todo t)))
 
-(ert-deftest my/org-gcal-records-success-time-and-configured-coverage ()
-  (let* ((fetched-at (encode-time 0 0 12 14 10 2026))
+(ert-deftest my/org-gcal-records-fetch-time-without-claiming-complete-coverage ()
+  (let* ((my/org-gcal-calendar-file (make-temp-file "lifeos-receipt-record-"))
+         (fetched-at (encode-time 0 0 12 14 10 2026))
          (org-gcal-down-days 21)
          (my/org-gcal-last-successful-fetch-time nil)
          (my/org-gcal-calendar-coverage-end nil))
-    (my/org-gcal--record-successful-fetch fetched-at)
-    (should (equal my/org-gcal-last-successful-fetch-time fetched-at))
-    (should (= (floor (float-time
-                       (time-subtract my/org-gcal-calendar-coverage-end fetched-at)))
-               (* 21 24 60 60)))))
+    (unwind-protect
+        (progn
+          (my/org-gcal--record-successful-fetch fetched-at)
+          (should (equal my/org-gcal-last-successful-fetch-time fetched-at))
+          (should-not my/org-gcal-calendar-coverage-end))
+      (delete-file my/org-gcal-calendar-file)
+      (delete-file (concat my/org-gcal-calendar-file ".sync-receipt.json")))))
+
+(ert-deftest my/org-gcal-receipt-is-persisted-from-saved-bytes-only ()
+  (let* ((file (make-temp-file "lifeos-receipt-" nil ".org" "* Event\n"))
+         (my/org-gcal-calendar-file file)
+         (org-gcal-down-days 2)
+         (fetched-at (date-to-time "2026-11-08T10:00:00Z")))
+    (unwind-protect
+        (progn
+          (my/org-gcal--record-successful-fetch fetched-at)
+          (let* ((json-object-type 'plist)
+                 (receipt (json-read-file (concat file ".sync-receipt.json"))))
+            (should (= (plist-get receipt :version) 2))
+            (should (equal (plist-get receipt :availability) "unverified"))
+            (should (equal (plist-get receipt :sha256)
+                           (with-temp-buffer
+                             (insert-file-contents-literally file)
+                             (secure-hash 'sha256 (current-buffer)))))
+            (should (equal (plist-get receipt :fetchedAt)
+                           "2026-11-08T10:00:00Z"))
+            (should (equal (plist-get receipt :requestedEnd)
+                           "2026-11-10T10:00:00Z"))
+            (should-not (plist-get receipt :coverageEnd))))
+      (delete-file file)
+      (when (file-exists-p (concat file ".sync-receipt.json"))
+        (delete-file (concat file ".sync-receipt.json"))))))
+
+(ert-deftest my/org-gcal-failed-save-does-not-replace-success-receipt ()
+  (let* ((file (make-temp-file "lifeos-receipt-failure-" nil ".org" "* Event\n"))
+         (my/org-gcal-calendar-file file)
+         (fetched-at (date-to-time "2026-11-08T10:00:00Z")))
+    (unwind-protect
+        (progn
+          (my/org-gcal--record-successful-fetch fetched-at)
+          (let ((previous (with-temp-buffer
+                            (insert-file-contents (concat file ".sync-receipt.json"))
+                            (buffer-string))))
+            (with-current-buffer (find-file-noselect file)
+              (goto-char (point-max))
+              (insert "Unsaved change\n"))
+            (should-error (my/org-gcal--record-successful-fetch
+                           (date-to-time "2026-11-08T11:00:00Z")))
+            (should (equal previous
+                           (with-temp-buffer
+                             (insert-file-contents (concat file ".sync-receipt.json"))
+                             (buffer-string))))))
+      (when-let* ((buffer (get-file-buffer file)))
+        (set-buffer-modified-p nil)
+        (kill-buffer buffer))
+      (delete-file file)
+      (delete-file (concat file ".sync-receipt.json")))))
 
 (provide 'my-org-gcal-test)
 ;;; org-gcal-test.el ends here
