@@ -420,7 +420,7 @@
                                   (alist-get 'evidence (car busy)))
                        "project-z"))))))
 
-(ert-deftest my/lifeos-schedule-parser-rejects-overlap-and-split-task ()
+(ert-deftest my/lifeos-schedule-parser-accepts-multiple-blocks-and-rejects-overlap ()
   (my/lifeos-schedule-test-with-planning ""
     (let* ((one (my/lifeos-schedule-test-block "same" 30000000 'keep))
            (two (plist-put (my/lifeos-schedule-test-block
@@ -429,9 +429,12 @@
            (text (my/lifeos-schedule-serialize-plan
                   "p" "f" 30000000 30001000 29999900 (list one two))))
       (write-region text nil file nil 'silent)
-      (should (string-match-p
-               "split or duplicated"
-               (car (plist-get (my/lifeos-schedule-parse-current-plan) :issues))))))
+      (let ((plan (my/lifeos-schedule-parse-current-plan)))
+        (should (plist-get plan :valid-p))
+        (should (= (length (plist-get plan :blocks)) 2))
+        (should (equal (mapcar (lambda (block) (plist-get block :task-id))
+                               (plist-get plan :blocks))
+                       '("same" "same"))))))
   (my/lifeos-schedule-test-with-planning ""
     (let* ((one (my/lifeos-schedule-test-block "one" 30000000 'keep))
            (two (my/lifeos-schedule-test-block "two" 30000030 'keep))

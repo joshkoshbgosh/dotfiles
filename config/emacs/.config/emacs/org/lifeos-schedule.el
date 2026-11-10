@@ -204,12 +204,12 @@ Absence is valid and represented by `:present-p' nil.  Malformed plans return
                                                     (plist-get right :id))
                                          (< (plist-get left :start)
                                             (plist-get right :start))))))
-                  (let ((task-ids (make-hash-table :test #'equal)) previous)
+                  ;; Multiple blocks per Org task are part of the explicit-plan
+                  ;; representation (scheduling-contract §4): a task may be
+                  ;; split across blocks, each with stable, distinct block IDs.
+                  ;; Overlap and duplicate block identity remain errors below.
+                  (let (previous)
                     (dolist (block blocks)
-                      (when-let* ((task-id (plist-get block :task-id)))
-                        (when (gethash task-id task-ids)
-                          (error "Accepted task is split or duplicated: %s" task-id))
-                        (puthash task-id t task-ids))
                       (when (and previous
                                  (> (plist-get previous :end)
                                     (plist-get block :start)))
