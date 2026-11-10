@@ -747,20 +747,557 @@ Move forward when FORWARD-P, otherwise backward."
               ((string-match-p "[[:space:]][0-9][0-9]:[0-9][0-9]" scheduled)))
     (org-get-scheduled-time nil)))
 
-(defun my/lifeos-set-remaining-effort (minutes)
-  "Set expected total EFFORT from remaining MINUTES and direct clocks."
+;;; Correction-anchored effort
+;;
+;; EFFORT is the legacy display baseline.  Durable correction anchors live in
+;; an append-only LIFEOS_EFFORT drawer on the task:
+;;
+;;   EPISODE id=<episode> task=<task-id> start=<UTC instant>
+;;   CORRECTION id=<id> task=<task-id> episode=<episode> \
+;;              effective=<UTC instant> remaining=<minutes> \
+;;              revision=<stable revision>
+;;
+;; The drawer is never rewritten; a correction is appended.  EPISODE records
+;; bind clocks to the effort episode in which they started.  A rewritten EFFORT
+;; without a CORRECTION record stays legacy/unanchored, never an implicit
+;; anchor.  Both record kinds carry the task ID so copying a drawer to another
+;; task is detected instead of silently rebinding the correction.
+
+(defconst my/lifeos--effort-drawer "LIFEOS_EFFORT"
+  "Org drawer holding append-only effort episodes and corrections.")
+
+(defconst my/lifeos--effort-instant-regexp
+  (concat "\\`[0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}"
+          "T[0-9]\\{2\\}:[0-9]\\{2\\}:[0-9]\\{2\\}"
+          "\\(?:Z\\|[+-][0-9]\\{2\\}:[0-9]\\{2\\}\\)\\'")
+  "Regexp matching a timezone-qualified ISO timestamp.")
+
+(defun my/lifeos--effort-issue (code detail)
+  "Return a structured effort-record issue."
+  (list :code code :detail detail))
+
+(defun my/lifeos--effort-instant-minutes (instant)
+  "Return epoch minutes for minute-aligned INSTANT, or nil."
+  (when (and (stringp instant)
+             (string-match-p my/lifeos--effort-instant-regexp instant))
+    (condition-case nil
+        (let ((seconds (float-time (date-to-time instant))))
+          (and (zerop (% (truncate seconds) 60))
+               (/ (truncate seconds) 60)))
+      (error nil))))
+
+(defun my/lifeos--effort-effective-instant (&optional instant)
+  "Return INSTANT or the current UTC minute, validated and minute aligned."
+  (let ((value (or instant
+                   (format-time-string "%Y-%m-%dT%H:%M:00Z" nil t))))
+    (unless (my/lifeos--effort-instant-minutes value)
+      (user-error "Correction instant must be a minute-aligned ISO timestamp"))
+    value))
+
+(defun my/lifeos--effort-task-id ()
+  "Return the current heading's stable task ID, or nil."
+  (let ((id (org-entry-get nil "ID")))
+    (and id (not (string-empty-p id)) id)))
+
+(defun my/lifeos--effort-property (name)
+  "Return non-empty property NAME for the current heading, or nil."
+  (let ((value (org-entry-get nil name)))
+    (and value (not (string-empty-p (string-trim value))) value)))
+
+(defun my/lifeos--effort-drawer-regions ()
+  "Return (:content-start :content-end :closed-p) for effort drawers."
+  (save-excursion
+    (when-let* ((section (my/lifeos--entry-section-bounds)))
+      (goto-char (car section))
+      (let (regions)
+        (while (re-search-forward
+                (format "^[ \t]*:%s:[ \t]*$" my/lifeos--effort-drawer)
+                (cdr section) t)
+          (let ((content-start (progn (forward-line 1) (point))))
+            (if (re-search-forward "^[ \t]*:END:[ \t]*$" (cdr section) t)
+                (push (list :content-start content-start
+                            :content-end (match-beginning 0)
+                            :closed-p t)
+                      regions)
+              ;; An unclosed drawer is a record-integrity error, not an empty
+              ;; drawer.  Stop at the section end; nothing after it belongs to
+              ;; the effort record.
+              (push (list :content-start content-start
+                          :content-end (cdr section)
+                          :closed-p nil)
+                    regions)
+              (goto-char (cdr section)))))
+        (nreverse regions)))))
+
+(defun my/lifeos--effort-record-lines ()
+  "Return non-empty record lines from the current task's effort drawers."
+  (let (lines)
+    (dolist (region (my/lifeos--effort-drawer-regions))
+      (save-excursion
+        (goto-char (plist-get region :content-start))
+        (while (< (point) (plist-get region :content-end))
+          (let ((line (string-trim
+                       (buffer-substring-no-properties
+                        (line-beginning-position) (line-end-position)))))
+            (unless (string-empty-p line)
+              (push line lines)))
+          (forward-line 1))))
+    (nreverse lines)))
+
+(defun my/lifeos--direct-clock-records ()
+  "Return raw direct CLOCK records for the current heading."
+  (save-excursion
+    (org-back-to-heading t)
+    (when-let* ((bounds (my/lifeos--entry-section-bounds)))
+      (save-restriction
+        (narrow-to-region (car bounds) (cdr bounds))
+        (goto-char (point-min))
+        (let (records)
+          (while (re-search-forward
+                  "^[ \t]*CLOCK:[ \t]*\\[\\([^]]+\\)\\]\\(?:--\\[\\([^]]+\\)\\]\\)?"
+                  nil t)
+            (push (list :start (match-string-no-properties 1)
+                        :end (match-string-no-properties 2))
+                  records))
+          (nreverse records))))))
+
+(defun my/lifeos--clock-utc (text)
+  "Return (EPOCH . UTC-STRING) for an Org clock timestamp TEXT, or nil.
+Org clock lines are local wall time; this conversion uses the machine zone.
+A trusted scheduler adapter must carry explicit zone evidence instead."
+  (condition-case nil
+      (let* ((time (org-time-string-to-time text))
+             (seconds (float-time time)))
+        (and (zerop (% (truncate seconds) 60))
+             (cons (truncate seconds)
+                   (format-time-string "%Y-%m-%dT%H:%M:%SZ" time t))))
+    (error nil)))
+
+(defun my/lifeos--effort-correction-summary
+    (task-id episode-id effective remaining)
+  "Return the stable payload summary for one correction."
+  (secure-hash 'sha256
+               (format "%s|%s|%s|%d"
+                       task-id episode-id effective remaining)))
+
+(defun my/lifeos--effort-correction-id
+    (task-id episode-id effective remaining)
+  "Return the deterministic correction ID for a correction payload."
+  (concat "c-" (substring
+                (my/lifeos--effort-correction-summary
+                 task-id episode-id effective remaining)
+                0 16)))
+
+(defun my/lifeos--effort-correction-revision
+    (task-id episode-id effective remaining)
+  "Return the stable revision for a correction payload."
+  (substring (my/lifeos--effort-correction-summary
+              task-id episode-id effective remaining)
+             0 16))
+
+(defun my/lifeos--effort-episode-id (task-id start)
+  "Return the deterministic effort episode ID for TASK-ID and START."
+  (concat "e-" (substring (secure-hash 'sha256
+                                        (format "%s|%s" task-id start))
+                           0 16)))
+
+(defun my/lifeos-effort-state ()
+  "Return the persisted effort state for the task at point.
+
+The state separates legacy EFFORT from durable correction anchors.  Clocks are
+attributed to the effort episode in which they started; an unattributable or
+episode-crossing clock is an issue, never a silent guess.  Clock instants use
+the machine zone (`:clock-zone-basis' is `machine-local'), so this state is not
+trusted coverage evidence.  `:valid-p' covers record integrity only; missing or
+legacy effort is reported through `:effort-provenance'."
+  (save-excursion
+    (org-back-to-heading t)
+    (let* ((task-id (my/lifeos--effort-task-id))
+           (lines (my/lifeos--effort-record-lines))
+           (regions (my/lifeos--effort-drawer-regions))
+           (issues nil)
+           (episodes nil)
+           (corrections nil)
+           (seen-corrections (make-hash-table :test #'equal))
+           (effort-text (my/lifeos--effort-property "EFFORT"))
+           (original-text (my/lifeos--effort-property "ORIGINAL_EFFORT"))
+           (effort-minutes (my/lifeos--effort-minutes effort-text))
+           (original-minutes (my/lifeos--effort-minutes original-text)))
+      (when (cdr regions)
+        (push (my/lifeos--effort-issue
+               'duplicate-effort-drawer
+               (format "task has %d %s drawers"
+                       (length regions) my/lifeos--effort-drawer))
+              issues))
+      (dolist (region regions)
+        (unless (plist-get region :closed-p)
+          (push (my/lifeos--effort-issue
+                 'unclosed-effort-drawer
+                 (format "%s drawer has no :END:" my/lifeos--effort-drawer))
+                issues)))
+      (when (and (null task-id) (or lines effort-text))
+        (push (my/lifeos--effort-issue
+               'missing-task-id
+               "effort records require the task's stable ID")
+              issues))
+      (when (and effort-text (null effort-minutes))
+        (push (my/lifeos--effort-issue
+               'malformed-effort
+               (format "EFFORT %S is not an H:MM duration" effort-text))
+              issues))
+      (when (and effort-minutes (zerop effort-minutes))
+        ;; The scheduling snapshot requires a positive initial baseline; a zero
+        ;; EFFORT is exhausted/unknown, not a zero-duration demand.
+        (push (my/lifeos--effort-issue
+               'nonpositive-effort
+               "EFFORT must be positive; zero means exhausted, not demand")
+              issues))
+      (dolist (line lines)
+        (cond
+         ((string-match
+           (concat "\\`EPISODE id=\\([^ \t]+\\)"
+                   " task=\\([^ \t]+\\)"
+                   " start=\\([^ \t]+\\)\\'")
+           line)
+          (let ((id (match-string 1 line))
+                (record-task (match-string 2 line))
+                (start (match-string 3 line)))
+            (when (and task-id (not (equal record-task task-id)))
+              (push (my/lifeos--effort-issue
+                     'episode-task-mismatch
+                     (format "episode %s is bound to task %s, not %s"
+                             id record-task task-id))
+                    issues))
+            (if (null (my/lifeos--effort-instant-minutes start))
+                (push (my/lifeos--effort-issue
+                       'malformed-episode
+                       (format "episode %s has invalid start %s" id start))
+                      issues)
+              (let ((existing (seq-find
+                               (lambda (episode)
+                                 (equal (plist-get episode :id) id))
+                               episodes)))
+                (cond
+                 ((null existing)
+                  (push (list :id id :task-id record-task :start start)
+                        episodes))
+                 ((not (equal (plist-get existing :start) start))
+                  (push (my/lifeos--effort-issue
+                         'duplicate-episode-id
+                         (format "episode %s has conflicting starts" id))
+                        issues)))))))
+         ((string-match
+           (concat "\\`CORRECTION id=\\([^ \t]+\\)"
+                   " task=\\([^ \t]+\\)"
+                   " episode=\\([^ \t]+\\)"
+                   " effective=\\([^ \t]+\\)"
+                   " remaining=\\([0-9]+\\)"
+                   " revision=\\([^ \t]+\\)\\'")
+           line)
+          (let ((id (match-string 1 line))
+                (record-task (match-string 2 line))
+                (episode-id (match-string 3 line))
+                (effective (match-string 4 line))
+                (remaining (string-to-number (match-string 5 line)))
+                (revision (match-string 6 line)))
+            (when (and task-id (not (equal record-task task-id)))
+              (push (my/lifeos--effort-issue
+                     'correction-task-mismatch
+                     (format "correction %s is bound to task %s, not %s"
+                             id record-task task-id))
+                    issues))
+            (if (null (my/lifeos--effort-instant-minutes effective))
+                (push (my/lifeos--effort-issue
+                       'malformed-correction
+                       (format "correction %s has invalid effective instant %s"
+                               id effective))
+                      issues)
+              (let ((record (list :correction-id id
+                                  :task-id record-task
+                                  :episode-id episode-id
+                                  :effective-at effective
+                                  :remaining-minutes remaining
+                                  :revision revision)))
+                (let ((previous (gethash id seen-corrections)))
+                  (cond
+                   ((null previous)
+                    (puthash id record seen-corrections)
+                    (push record corrections))
+                   ((not (equal previous record))
+                    (push (my/lifeos--effort-issue
+                           'duplicate-correction-id
+                           (format "correction %s has conflicting payloads" id))
+                          issues))))
+                (unless (equal
+                         revision
+                         (my/lifeos--effort-correction-revision
+                          record-task episode-id effective remaining))
+                  (push (my/lifeos--effort-issue
+                         'correction-revision-mismatch
+                         (format "correction %s revision does not match its payload"
+                                 id))
+                        issues))))))
+         (t
+          (push (my/lifeos--effort-issue
+                 'unknown-effort-record
+                 (format "unknown effort record: %s" line))
+                issues))))
+      (setq episodes
+            (sort episodes
+                  (lambda (left right)
+                    (< (my/lifeos--effort-instant-minutes
+                        (plist-get left :start))
+                       (my/lifeos--effort-instant-minutes
+                        (plist-get right :start))))))
+      (let ((starts (make-hash-table :test #'equal)))
+        (dolist (episode episodes)
+          (let ((start (my/lifeos--effort-instant-minutes
+                        (plist-get episode :start))))
+            (when (gethash start starts)
+              (push (my/lifeos--effort-issue
+                     'conflicting-episode-start
+                     (format "different episodes start at %s"
+                             (plist-get episode :start)))
+                    issues))
+            (puthash start t starts))))
+      (let ((episode-ids (mapcar (lambda (episode)
+                                   (plist-get episode :id))
+                                 episodes)))
+        (dolist (correction corrections)
+          (unless (member (plist-get correction :episode-id) episode-ids)
+            (push (my/lifeos--effort-issue
+                   'unknown-correction-episode
+                   (format "correction %s references unknown episode %s"
+                           (plist-get correction :correction-id)
+                           (plist-get correction :episode-id)))
+                  issues))))
+      (let ((by-effective (make-hash-table :test #'equal)))
+        (dolist (correction corrections)
+          (let* ((effective (plist-get correction :effective-at))
+                 (previous (gethash effective by-effective)))
+            (if (null previous)
+                (puthash effective correction by-effective)
+              (unless (equal previous correction)
+                (push (my/lifeos--effort-issue
+                       'conflicting-correction-effective
+                       (format "different corrections share effective instant %s"
+                               effective))
+                      issues))))))
+      (setq corrections
+            (sort corrections
+                  (lambda (left right)
+                    (string< (plist-get left :effective-at)
+                             (plist-get right :effective-at)))))
+      (let* ((latest (car (last episodes)))
+             (episode-starts (mapcar
+                              (lambda (episode)
+                                (cons (* 60 (my/lifeos--effort-instant-minutes
+                                             (plist-get episode :start)))
+                                      episode))
+                              episodes))
+             (clocks nil))
+        (dolist (raw (my/lifeos--direct-clock-records))
+          (let* ((start-info (my/lifeos--clock-utc (plist-get raw :start)))
+                 (end-info (and (plist-get raw :end)
+                                (my/lifeos--clock-utc (plist-get raw :end)))))
+            (cond
+             ((null start-info)
+              (push (my/lifeos--effort-issue
+                     'malformed-clock
+                     (format "clock start %S is not a minute-aligned Org timestamp"
+                             (plist-get raw :start)))
+                    issues))
+             ((and (plist-get raw :end) (null end-info))
+              (push (my/lifeos--effort-issue
+                     'malformed-clock
+                     (format "clock end %S is not a minute-aligned Org timestamp"
+                             (plist-get raw :end)))
+                    issues))
+             ((and end-info (<= (car end-info) (car start-info)))
+              (push (my/lifeos--effort-issue
+                     'malformed-clock
+                     "clock end must be after its start")
+                    issues))
+             (t
+              (let* ((start-epoch (car start-info))
+                     (episode (cdr (seq-find
+                                    (lambda (entry)
+                                      (<= (car entry) start-epoch))
+                                    (reverse episode-starts))))
+                     (next (seq-find
+                            (lambda (entry)
+                              (> (car entry) start-epoch))
+                            episode-starts)))
+                (cond
+                 ((null episode)
+                  (push (my/lifeos--effort-issue
+                         'clock-before-episode
+                         (format "clock at %s predates every effort episode"
+                                 (cdr start-info)))
+                        issues))
+                 ((and next
+                       (or (null end-info)
+                           (> (car end-info) (car next))))
+                  (push (my/lifeos--effort-issue
+                         'clock-crosses-episode
+                         (format "clock at %s crosses episode %s"
+                                 (cdr start-info)
+                                 (plist-get (cdr next) :id)))
+                        issues))
+                 (t
+                  (push (list :clock-id nil
+                              :task-id task-id
+                              :episode-id (plist-get episode :id)
+                              :started-at (cdr start-info)
+                              :ended-at (and end-info (cdr end-info)))
+                        clocks))))))))
+        (setq clocks (nreverse clocks))
+        (let ((current-corrections
+               (seq-filter
+                (lambda (correction)
+                  (equal (plist-get correction :episode-id)
+                         (plist-get latest :id)))
+                corrections)))
+          (list :task-id task-id
+                :title (org-get-heading t t t t)
+                :valid-p (null issues)
+                :issues (nreverse issues)
+                :episodes episodes
+                :episode-id (plist-get latest :id)
+                :episode-started-at (plist-get latest :start)
+                :corrections corrections
+                :current-episode-corrections current-corrections
+                :clocks clocks
+                :clock-zone-basis 'machine-local
+                :effort-minutes effort-minutes
+                :effort-provenance
+                (cond
+                 ((null effort-minutes) 'missing)
+                 ;; Without a valid ORIGINAL_EFFORT, an explicit initial
+                 ;; baseline cannot be distinguished from a rewrite.
+                 ((null original-minutes) 'legacy-rewritten)
+                 ((/= original-minutes effort-minutes) 'legacy-rewritten)
+                 (t 'explicit-initial))
+                :correction-anchored-p
+                (and current-corrections t)))))))
+
+(defun my/lifeos--effort-append-record (record)
+  "Append RECORD to the current task's LIFEOS_EFFORT drawer."
+  (save-excursion
+    (org-back-to-heading t)
+    (let ((regions (my/lifeos--effort-drawer-regions)))
+      (cond
+       ((cdr regions)
+        (user-error "Multiple %s drawers; resolve them before adding a correction"
+                    my/lifeos--effort-drawer))
+       ((and regions (not (plist-get (car regions) :closed-p)))
+        (user-error "The %s drawer is unclosed; add :END: before recording"
+                    my/lifeos--effort-drawer))
+       (regions
+        (goto-char (plist-get (car regions) :content-end))
+        (insert record "\n"))
+       (t
+        (org-end-of-meta-data)
+        (insert (format ":%s:\n%s\n:END:\n"
+                        my/lifeos--effort-drawer record)))))))
+
+(defun my/lifeos--effort-earliest-clock-start ()
+  "Return the earliest direct clock start as a UTC instant, or nil."
+  (let (earliest)
+    (dolist (raw (my/lifeos--direct-clock-records))
+      (let ((info (my/lifeos--clock-utc (plist-get raw :start))))
+        (unless info
+          (user-error "Cannot anchor effort while a clock line is malformed"))
+        (when (or (null earliest) (< (car info) earliest))
+          (setq earliest (car info)))))
+    (and earliest
+         (format-time-string "%Y-%m-%dT%H:%M:%SZ"
+                             (seconds-to-time earliest) t))))
+
+(defun my/lifeos--effort-resolve-episode (state effective)
+  "Return (ID START NEW-P) for STATE, beginning at the earliest clock."
+  (let ((existing-id (plist-get state :episode-id)))
+    (if existing-id
+        (progn
+          (unless (plist-get state :valid-p)
+            (user-error "Resolve effort-record issues before adding a correction"))
+          (let ((start (plist-get state :episode-started-at)))
+            (when (< (my/lifeos--effort-instant-minutes effective)
+                     (my/lifeos--effort-instant-minutes start))
+              (user-error "Correction instant precedes the effort episode start"))
+            (list existing-id start nil)))
+      (let ((allowed '(clock-before-episode)))
+        (dolist (issue (plist-get state :issues))
+          (unless (memq (plist-get issue :code) allowed)
+            (user-error "Resolve effort-record issue %s before adding a correction"
+                        (plist-get issue :code)))))
+      (let ((task-id (plist-get state :task-id)))
+        (unless task-id
+          (user-error "Effort corrections require the task's stable ID"))
+        (let* ((start (or (my/lifeos--effort-earliest-clock-start)
+                          effective))
+               (episode-id (my/lifeos--effort-episode-id task-id start)))
+          (when (< (my/lifeos--effort-instant-minutes effective)
+                   (my/lifeos--effort-instant-minutes start))
+            (user-error "Correction instant precedes the effort episode start"))
+          (list episode-id start t))))))
+
+(defun my/lifeos-set-remaining-effort (minutes &optional effective)
+  "Record remaining MINUTES as an append-only effort correction.
+
+EFFECTIVE defaults to the current UTC minute and exists for deterministic
+callers.  The legacy EFFORT value is still updated for display
+(clocked + MINUTES), but the durable correction anchor is authoritative.  An
+identical correction at the same instant is idempotent; a different one is
+refused rather than creating a conflicting record."
   (interactive "nRemaining minutes: ")
-  (unless (>= minutes 0)
+  (unless (and (integerp minutes) (>= minutes 0))
     (user-error "Remaining minutes cannot be negative"))
   (org-back-to-heading t)
-  (let* ((current (org-entry-get nil "EFFORT"))
-         (total (+ (my/lifeos--direct-clocked-minutes) minutes))
-         (effort (format "%d:%02d" (/ total 60) (% total 60))))
-    (unless (my/lifeos--valid-effort-p (org-entry-get nil "ORIGINAL_EFFORT"))
-      (org-entry-put nil "ORIGINAL_EFFORT"
-                     (if (my/lifeos--valid-effort-p current) current effort)))
-    (org-entry-put nil "EFFORT" effort)
-    effort))
+  (let* ((effective (my/lifeos--effort-effective-instant effective))
+         (task-id (my/lifeos--effort-task-id)))
+    (unless task-id
+      (user-error "Effort corrections require the task's stable ID"))
+    (let* ((state (my/lifeos-effort-state))
+           (resolved (my/lifeos--effort-resolve-episode state effective))
+           (episode-id (nth 0 resolved))
+           (episode-start (nth 1 resolved))
+           (new-episode-p (nth 2 resolved))
+           (existing (seq-find
+                      (lambda (correction)
+                        (equal (plist-get correction :effective-at)
+                               effective))
+                      (plist-get state :corrections))))
+      (when existing
+        (unless (and (equal (plist-get existing :episode-id) episode-id)
+                     (= (plist-get existing :remaining-minutes) minutes))
+          (user-error
+           "A different effort correction is already effective at %s"
+           effective)))
+      (let* ((current (org-entry-get nil "EFFORT"))
+             (total (+ (my/lifeos--direct-clocked-minutes) minutes))
+             (effort (format "%d:%02d" (/ total 60) (% total 60))))
+        (atomic-change-group
+          (when new-episode-p
+            (my/lifeos--effort-append-record
+             (format "EPISODE id=%s task=%s start=%s"
+                     episode-id task-id episode-start)))
+          (unless (my/lifeos--valid-effort-p
+                   (org-entry-get nil "ORIGINAL_EFFORT"))
+            (org-entry-put nil "ORIGINAL_EFFORT"
+                           (if (my/lifeos--valid-effort-p current)
+                               current effort)))
+          (org-entry-put nil "EFFORT" effort)
+          (unless existing
+            (my/lifeos--effort-append-record
+             (format (concat "CORRECTION id=%s task=%s episode=%s"
+                             " effective=%s remaining=%d revision=%s")
+                     (my/lifeos--effort-correction-id
+                      task-id episode-id effective minutes)
+                     task-id episode-id effective minutes
+                     (my/lifeos--effort-correction-revision
+                      task-id episode-id effective minutes)))))
+        effort))))
 
 (defun my/lifeos-groom-task ()
   "Interactively establish required metadata for the task at point."

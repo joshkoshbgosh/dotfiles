@@ -536,6 +536,299 @@ CLOCK: [2026-10-12 Mon 09:00]--[2026-10-12 Mon 09:30] =>  0:30
     (should (equal (org-entry-get nil "ORIGINAL_EFFORT") "1:00"))
     (should (= (my/lifeos-task-estimate-balance) 45))))
 
+(ert-deftest my/lifeos-set-remaining-effort-appends-an-idempotent-anchor ()
+  (my/lifeos-test-with-org
+      "* TODO [#A] Leaf #task
+:PROPERTIES:
+:ID: leaf-id
+:EFFORT: 1:00
+:ORIGINAL_EFFORT: 1:00
+:IMPACT: High
+:WORK_MODE: Deep
+:END:
+:LOGBOOK:
+CLOCK: [2026-10-12 Mon 09:00]--[2026-10-12 Mon 09:30] =>  0:30
+:END:
+"
+    (let ((effective (format-time-string
+                      "%Y-%m-%dT%H:%M:00Z"
+                      (org-time-string-to-time "2026-10-12 Mon 09:30") t)))
+      (should (equal (my/lifeos-set-remaining-effort 45 effective) "1:15"))
+      (let* ((state (my/lifeos-effort-state))
+             (episode (plist-get state :episode-id))
+             (correction (car (plist-get state :corrections))))
+        (should (plist-get state :valid-p))
+        (should (eq (plist-get state :effort-provenance) 'legacy-rewritten))
+        (should (plist-get state :correction-anchored-p))
+        (should (= (length (plist-get state :episodes)) 1))
+        (should (= (length (plist-get state :corrections)) 1))
+        (should (= (length (plist-get state :clocks)) 1))
+        (should (equal (plist-get (car (plist-get state :clocks)) :episode-id)
+                       episode))
+        (should (equal (plist-get correction :effective-at) effective))
+        (should (= (plist-get correction :remaining-minutes) 45))
+        (should (equal (plist-get correction :correction-id)
+                       (my/lifeos--effort-correction-id
+                        "leaf-id" episode effective 45)))
+        (should (equal (plist-get correction :revision)
+                       (my/lifeos--effort-correction-revision
+                        "leaf-id" episode effective 45))))
+      (should (equal (my/lifeos-set-remaining-effort 45 effective) "1:15"))
+      (should (= (length (plist-get (my/lifeos-effort-state) :corrections)) 1))
+      (should-error (my/lifeos-set-remaining-effort 30 effective)
+                    :type 'user-error)
+      (should (= (length (plist-get (my/lifeos-effort-state) :corrections)) 1)))))
+
+(ert-deftest my/lifeos-effort-anchor-survives-file-reload ()
+  (let* ((file (make-temp-file "lifeos-effort-" nil ".org"))
+         (effective (format-time-string
+                     "%Y-%m-%dT%H:%M:00Z"
+                     (org-time-string-to-time "2026-10-12 Mon 09:30") t))
+         (org-todo-keywords
+          '((sequence "TODO(t)" "NEXT(n)" "WAITING(w)" "SOMEDAY(s)"
+                      "|" "DONE(d)" "CANCELLED(c)"))))
+    (unwind-protect
+        (progn
+          (with-temp-file file
+            (insert "* TODO [#A] Leaf #task
+:PROPERTIES:
+:ID: leaf-id
+:EFFORT: 1:00
+:ORIGINAL_EFFORT: 1:00
+:END:
+"))
+          (let ((buffer (find-file-noselect file)))
+            (unwind-protect
+                (with-current-buffer buffer
+                  (org-mode)
+                  (goto-char (point-min))
+                  (my/lifeos-set-remaining-effort 45 effective)
+                  (save-buffer))
+              (kill-buffer buffer)))
+          (let ((buffer (find-file-noselect file)))
+            (unwind-protect
+                (with-current-buffer buffer
+                  (org-mode)
+                  (goto-char (point-min))
+                  (let* ((state (my/lifeos-effort-state))
+                         (correction (car (plist-get state :corrections))))
+                    (should (plist-get state :valid-p))
+                    (should (= (length (plist-get state :corrections)) 1))
+                    (should (equal (plist-get correction :effective-at)
+                                   effective))
+                    (should (= (plist-get correction :remaining-minutes) 45))))
+              (kill-buffer buffer))))
+      (delete-file file))))
+
+(ert-deftest my/lifeos-effort-corrections-are-appended-not-rewritten ()
+  (my/lifeos-test-with-org
+      "* TODO [#A] Leaf #task
+:PROPERTIES:
+:ID: leaf-id
+:EFFORT: 1:00
+:ORIGINAL_EFFORT: 1:00
+:END:
+:LOGBOOK:
+CLOCK: [2026-10-12 Mon 09:00]--[2026-10-12 Mon 09:30] =>  0:30
+:END:
+"
+    (let ((first (format-time-string
+                  "%Y-%m-%dT%H:%M:00Z"
+                  (org-time-string-to-time "2026-10-12 Mon 10:30") t))
+          (second (format-time-string
+                   "%Y-%m-%dT%H:%M:00Z"
+                   (org-time-string-to-time "2026-10-12 Mon 11:00") t)))
+      (my/lifeos-set-remaining-effort 45 first)
+      (let ((lines (my/lifeos--effort-record-lines)))
+        (my/lifeos-set-remaining-effort 30 second)
+        (let* ((after (my/lifeos--effort-record-lines))
+               (state (my/lifeos-effort-state)))
+          (should (equal lines (seq-take after (length lines))))
+          (should (= (length after) (1+ (length lines))))
+          (should (= (length (plist-get state :corrections)) 2))
+          (should (equal (plist-get (car (plist-get state :corrections))
+                                    :effective-at)
+                         first)))))))
+
+(ert-deftest my/lifeos-effort-state-keeps-rewritten-effort-unanchored ()
+  (my/lifeos-test-with-org
+      "* TODO [#A] Leaf #task
+:PROPERTIES:
+:ID: leaf-id
+:EFFORT: 1:15
+:ORIGINAL_EFFORT: 1:00
+:END:
+"
+    (let ((state (my/lifeos-effort-state)))
+      (should (plist-get state :valid-p))
+      (should (eq (plist-get state :effort-provenance) 'legacy-rewritten))
+      (should-not (plist-get state :correction-anchored-p))
+      (should-not (plist-get state :episode-id))))
+  (my/lifeos-test-with-org
+      "* TODO [#A] Leaf #task
+:PROPERTIES:
+:ID: leaf-id
+:EFFORT: 1:00
+:END:
+"
+    ;; Without ORIGINAL_EFFORT, an initial baseline is not provable.
+    (should (eq (plist-get (my/lifeos-effort-state) :effort-provenance)
+                'legacy-rewritten))))
+
+(ert-deftest my/lifeos-effort-state-treats-empty-properties-as-missing ()
+  (my/lifeos-test-with-org
+      "* TODO [#A] Leaf #task
+:PROPERTIES:
+:ID: leaf-id
+:EFFORT:
+:ORIGINAL_EFFORT:
+:END:
+"
+    (let ((state (my/lifeos-effort-state)))
+      (should (plist-get state :valid-p))
+      (should (eq (plist-get state :effort-provenance) 'missing))
+      (should-not (plist-get state :effort-minutes))
+      (should-not (plist-get state :issues))))
+  (my/lifeos-test-with-org
+      "* TODO [#A] Leaf #task
+:PROPERTIES:
+:ID: leaf-id
+:EFFORT: 0:00
+:ORIGINAL_EFFORT: 0:00
+:END:
+"
+    (let* ((state (my/lifeos-effort-state))
+           (codes (mapcar (lambda (issue) (plist-get issue :code))
+                          (plist-get state :issues))))
+      (should-not (plist-get state :valid-p))
+      (should (memq 'nonpositive-effort codes)))))
+
+(ert-deftest my/lifeos-effort-state-rejects-corrupt-corrections ()
+  (my/lifeos-test-with-org
+      "* TODO [#A] Leaf #task
+:PROPERTIES:
+:ID: leaf-id
+:EFFORT: 1:00
+:ORIGINAL_EFFORT: 1:00
+:END:
+:LIFEOS_EFFORT:
+EPISODE id=e-1 task=leaf-id start=2026-10-12T09:00:00Z
+CORRECTION id=c-1 task=leaf-id episode=e-1 effective=2026-10-12T10:00:00Z remaining=45 revision=wrong
+CORRECTION id=c-2 task=leaf-id episode=e-1 effective=2026-10-12T10:00:00Z remaining=30 revision=also-wrong
+:END:
+"
+    (let* ((state (my/lifeos-effort-state))
+           (codes (mapcar (lambda (issue) (plist-get issue :code))
+                          (plist-get state :issues))))
+      (should-not (plist-get state :valid-p))
+      (should (memq 'correction-revision-mismatch codes))
+      (should (memq 'conflicting-correction-effective codes)))
+    (should-error (my/lifeos-set-remaining-effort 20 "2026-10-12T11:00:00Z")
+                  :type 'user-error)))
+
+(ert-deftest my/lifeos-effort-state-rejects-a-copied-effort-drawer ()
+  (let* ((effective "2026-10-12T10:00:00Z")
+         (revision (my/lifeos--effort-correction-revision
+                    "other-id" "e-1" effective 45)))
+    (my/lifeos-test-with-org
+        (format "* TODO [#A] Leaf #task
+:PROPERTIES:
+:ID: leaf-id
+:EFFORT: 1:00
+:ORIGINAL_EFFORT: 1:00
+:END:
+:LIFEOS_EFFORT:
+EPISODE id=e-1 task=other-id start=2026-10-12T09:00:00Z
+CORRECTION id=c-1 task=other-id episode=e-1 effective=%s remaining=45 revision=%s
+:END:
+" effective revision)
+      (let* ((state (my/lifeos-effort-state))
+             (codes (mapcar (lambda (issue) (plist-get issue :code))
+                            (plist-get state :issues))))
+        (should-not (plist-get state :valid-p))
+        (should (memq 'episode-task-mismatch codes))
+        (should (memq 'correction-task-mismatch codes))))))
+
+(ert-deftest my/lifeos-effort-state-rejects-an-unclosed-drawer ()
+  (my/lifeos-test-with-org
+      "* TODO [#A] Leaf #task
+:PROPERTIES:
+:ID: leaf-id
+:EFFORT: 1:00
+:ORIGINAL_EFFORT: 1:00
+:END:
+:LIFEOS_EFFORT:
+EPISODE id=e-1 task=leaf-id start=2026-10-12T09:00:00Z
+"
+    (let* ((state (my/lifeos-effort-state))
+           (codes (mapcar (lambda (issue) (plist-get issue :code))
+                          (plist-get state :issues))))
+      (should-not (plist-get state :valid-p))
+      (should (memq 'unclosed-effort-drawer codes)))
+    (should-error (my/lifeos-set-remaining-effort 30 "2026-10-12T10:00:00Z")
+                  :type 'user-error)))
+
+(ert-deftest my/lifeos-effort-state-attributes-clocks-to-episodes ()
+  (my/lifeos-test-with-org
+      "* TODO [#A] Leaf #task
+:PROPERTIES:
+:ID: leaf-id
+:EFFORT: 1:00
+:ORIGINAL_EFFORT: 1:00
+:END:
+:LIFEOS_EFFORT:
+EPISODE id=e-1 task=leaf-id start=2000-01-01T00:00:00Z
+:END:
+:LOGBOOK:
+CLOCK: [2026-10-12 Mon 09:00]--[2026-10-12 Mon 09:30] =>  0:30
+:END:
+"
+    (let ((state (my/lifeos-effort-state)))
+      (should (plist-get state :valid-p))
+      (should (eq (plist-get state :clock-zone-basis) 'machine-local))
+      (should (equal (plist-get (car (plist-get state :clocks)) :episode-id)
+                     "e-1"))))
+  (my/lifeos-test-with-org
+      "* TODO [#A] Leaf #task
+:PROPERTIES:
+:ID: leaf-id
+:EFFORT: 1:00
+:ORIGINAL_EFFORT: 1:00
+:END:
+:LIFEOS_EFFORT:
+EPISODE id=e-1 task=leaf-id start=2030-01-01T00:00:00Z
+:END:
+:LOGBOOK:
+CLOCK: [2026-10-12 Mon 09:00]--[2026-10-12 Mon 09:30] =>  0:30
+:END:
+"
+    (let* ((state (my/lifeos-effort-state))
+           (codes (mapcar (lambda (issue) (plist-get issue :code))
+                          (plist-get state :issues))))
+      (should-not (plist-get state :valid-p))
+      (should (memq 'clock-before-episode codes))
+      (should-not (plist-get state :clocks))))
+  (my/lifeos-test-with-org
+      "* TODO [#A] Leaf #task
+:PROPERTIES:
+:ID: leaf-id
+:EFFORT: 1:00
+:ORIGINAL_EFFORT: 1:00
+:END:
+:LIFEOS_EFFORT:
+EPISODE id=e-1 task=leaf-id start=2000-01-01T00:00:00Z
+EPISODE id=e-2 task=leaf-id start=2030-01-01T00:00:00Z
+:END:
+:LOGBOOK:
+CLOCK: [2026-10-12 Mon 09:00]
+:END:
+"
+    (let* ((state (my/lifeos-effort-state))
+           (codes (mapcar (lambda (issue) (plist-get issue :code))
+                          (plist-get state :issues))))
+      (should (memq 'clock-crosses-episode codes))
+      (should-not (plist-get state :clocks)))))
+
 (ert-deftest my/lifeos-exhausted-estimate-is-review-not-error ()
   (my/lifeos-test-with-org
       "* TODO [#A] Leaf #task

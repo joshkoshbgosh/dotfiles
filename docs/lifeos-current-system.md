@@ -40,7 +40,10 @@ remaining = EFFORT - direct clocked minutes
 
 Zero or negative balance is a review finding and unknown future duration until
 re-estimated, not negative work. `my/lifeos-set-remaining-effort` preserves
-`ORIGINAL_EFFORT`.
+`ORIGINAL_EFFORT` and appends an `EPISODE`/`CORRECTION` record to a task-local,
+append-only `LIFEOS_EFFORT` drawer. Anchored accounting counts only clocks after
+that correction; an `EFFORT` rewrite without a correction record remains
+legacy/unanchored.
 
 ## Capture And Diagnostics
 
