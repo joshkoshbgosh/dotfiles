@@ -1582,12 +1582,9 @@
       (should (string-match-p "placementDeltas" (buffer-string))))))
 
 (ert-deftest my/lifeos-solver-estimate-stress-round-trips-through-real-cli ()
-  (let* ((root (locate-dominating-file
-                (or load-file-name buffer-file-name default-directory)
-                "lifeos-solver/package.json"))
-         (fixture (expand-file-name "lifeos-solver/test/fixtures/sat.json" root))
-         (command (list "npm" "--prefix" (expand-file-name "lifeos-solver" root)
-                        "run" "--silent" "solve"))
+  (let* ((root (my/lifeos-solver--solver-root))
+         (fixture (expand-file-name "test/fixtures/sat.json" root))
+         (command (list "npm" "--prefix" root "run" "--silent" "solve"))
          (request (json-parse-string
                    (with-temp-buffer
                      (insert-file-contents fixture)

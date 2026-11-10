@@ -103,9 +103,22 @@ Nil means mandatory sleep configuration is incomplete."
 
 (defcustom my/lifeos-solver-command nil
   "Command list used to invoke the LifeOS solver.
-Nil derives an npm command from the dotfiles repository."
+Nil derives an npm command from `my/lifeos-solver-root'."
   :type '(repeat string)
   :group 'my/lifeos)
+
+(defcustom my/lifeos-solver-root nil
+  "Directory containing the LifeOS solver's package.json.
+When nil, use LIFEOS_SOLVER_ROOT, then the lifeos-coordinator checkout."
+  :type '(choice (const :tag "Auto" nil) directory)
+  :group 'my/lifeos)
+
+(defun my/lifeos-solver--solver-root ()
+  "Return the expanded LifeOS solver package directory."
+  (expand-file-name
+   (or my/lifeos-solver-root
+       (getenv "LIFEOS_SOLVER_ROOT")
+       "~/Work/lifeos-coordinator/solver")))
 
 (defvar my/lifeos-solver-process nil)
 (defvar my/lifeos-solver-process-timer nil)
@@ -1912,16 +1925,11 @@ KIND, ID, SCOPE, and PROPERTIES use the discriminated protocol schema."
     query))
 
 (defun my/lifeos-solver--default-command ()
-  "Return the repository-local solver command."
-  (let* ((origin (or my/lifeos-solver-module-file
-                     load-file-name
-                     (locate-library "lifeos-solver")
-                     buffer-file-name))
-         (root (and origin (locate-dominating-file origin "lifeos-solver/package.json"))))
-    (unless root
-      (error "Cannot locate lifeos-solver/package.json"))
-    (list "npm" "--prefix" (expand-file-name "lifeos-solver" root)
-          "run" "--silent" "solve")))
+  "Return the solver command from `my/lifeos-solver-root'."
+  (let ((root (my/lifeos-solver--solver-root)))
+    (unless (file-exists-p (expand-file-name "package.json" root))
+      (error "Cannot locate LifeOS solver package.json under %s" root))
+    (list "npm" "--prefix" root "run" "--silent" "solve")))
 
 (defun my/lifeos-solver--cancel-process ()
   "Cancel the current shadow process and timeout timer."

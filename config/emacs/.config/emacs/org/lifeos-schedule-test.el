@@ -271,9 +271,8 @@
 
 (ert-deftest my/lifeos-schedule-candidate-round-trips-through-real-cli ()
   (my/lifeos-schedule-test-with-planning ""
-    (let* ((root (locate-dominating-file my/lifeos-solver-module-file
-                                         "lifeos-solver/package.json"))
-           (fixture (expand-file-name "lifeos-solver/test/fixtures/sat.json" root))
+    (let* ((root (my/lifeos-solver--solver-root))
+           (fixture (expand-file-name "test/fixtures/sat.json" root))
            (request (with-temp-buffer
                       (insert-file-contents fixture)
                       (json-parse-buffer :object-type 'alist :array-type 'array
