@@ -277,6 +277,12 @@ candidates. They run against baseline or scenario; applicable queries select
 deadline-only or safe assurance. Exact semantics are in
 [`lifeos-solver-protocol.md`](lifeos-solver-protocol.md).
 
+`my/lifeos-scheduling-review-fixture` shows the coordinator's read-only
+scheduling review for the checked-in synthetic fixture: plan validity, Q1 pinned
+feasibility, Q2 unpinned feasibility and the two overall results. It runs
+`scripts/scheduling-review.ts`, never reads live Org, never invokes the Org write
+path, and labels the output as synthetic/non-live evidence.
+
 ## Assurance Boundary
 
 `PROVEN FEASIBLE` and `PROVEN INFEASIBLE` apply only to normalized known input.

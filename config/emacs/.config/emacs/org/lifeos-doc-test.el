@@ -61,6 +61,7 @@
                       my/lifeos-refresh-project-analysis
                       my/lifeos-groom-project my/lifeos-settings
                      my/lifeos-solver-show-portfolio-review
+                     my/lifeos-scheduling-review-fixture
                      my/lifeos-solver-show-shadow-result
                      my/lifeos-solver-show-raw-json
                      my/lifeos-solver-show-discrepancies

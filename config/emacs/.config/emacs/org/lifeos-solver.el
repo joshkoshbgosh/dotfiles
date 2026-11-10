@@ -120,6 +120,41 @@ When nil, use LIFEOS_SOLVER_ROOT, then the lifeos-coordinator checkout."
        (getenv "LIFEOS_SOLVER_ROOT")
        "~/Work/lifeos-coordinator/solver")))
 
+(defcustom my/lifeos-coordinator-root nil
+  "Directory containing the lifeos-coordinator checkout.
+When nil, use LIFEOS_COORDINATOR_ROOT, then the parent of
+`my/lifeos-solver-root'."
+  :type '(choice (const :tag "Auto" nil) directory)
+  :group 'my/lifeos)
+
+(defcustom my/lifeos-scheduling-review-command "bun"
+  "Executable used for the read-only scheduling review script."
+  :type 'string
+  :group 'my/lifeos)
+
+(defun my/lifeos-solver--coordinator-root ()
+  "Return the expanded lifeos-coordinator checkout directory."
+  (expand-file-name
+   (or my/lifeos-coordinator-root
+       (getenv "LIFEOS_COORDINATOR_ROOT")
+       (file-name-directory
+        (directory-file-name (my/lifeos-solver--solver-root))))))
+
+(defconst my/lifeos-scheduling-review-fixture-relative
+  "specs/002-contextual-attention/fixtures/manual-plan.org"
+  "Checked-in synthetic fixture used by the read-only review command.")
+
+(defun my/lifeos-scheduling-review--command ()
+  "Return the command list for the synthetic scheduling review."
+  (let ((root (my/lifeos-solver--coordinator-root)))
+    (list my/lifeos-scheduling-review-command
+          "run"
+          (expand-file-name "scripts/scheduling-review.ts" root)
+          "--fixture"
+          (expand-file-name my/lifeos-scheduling-review-fixture-relative root)
+          "--now" "2026-11-10T10:00:00Z"
+          "--window" "2026-11-10T10:00:00Z/2026-11-10T18:00:00Z")))
+
 (defvar my/lifeos-solver-process nil)
 (defvar my/lifeos-solver-process-timer nil)
 (defvar my/lifeos-solver-request-sequence 0)
@@ -3526,6 +3561,73 @@ query-free.  FORECAST can pair an already captured heuristic snapshot."
   (goto-char (point-min))
   (when (search-forward "Heuristic vs solver" nil t)
     (beginning-of-line)))
+
+(defvar my/lifeos-scheduling-review-process nil
+  "Current asynchronous scheduling-review process, or nil.")
+
+(defun my/lifeos-scheduling-review-fixture ()
+  "Show the read-only scheduling review for the synthetic fixture.
+
+This runs the coordinator plan checker and both block-granular solver
+scopes.  It reads only the checked-in synthetic fixture and never reads or
+writes live Org.  Its output is explicitly not live evidence."
+  (interactive)
+  (let* ((command (my/lifeos-scheduling-review--command))
+         (executable (car command))
+         (script (nth 2 command))
+         (review (get-buffer-create "*LifeOS Scheduling Review*"))
+         (output (get-buffer-create " *LifeOS Scheduling Review output*"))
+         (errors (get-buffer-create " *LifeOS Scheduling Review stderr*")))
+    (unless (file-exists-p script)
+      (user-error "Scheduling review script not found: %s" script))
+    (unless (executable-find executable)
+      (user-error "Scheduling review executable not found: %s" executable))
+    (when (and (processp my/lifeos-scheduling-review-process)
+               (process-live-p my/lifeos-scheduling-review-process))
+      (delete-process my/lifeos-scheduling-review-process))
+    (with-current-buffer output (erase-buffer))
+    (with-current-buffer errors (erase-buffer))
+    (with-current-buffer review
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert "LifeOS Scheduling Review\n"
+                "========================\n"
+                "SYNTHETIC FIXTURE — NOT LIVE EVIDENCE\n"
+                (format "Running: %s\n\n" (string-join command " ")))))
+    (setq my/lifeos-scheduling-review-process
+          (make-process
+           :name "lifeos-scheduling-review"
+           :command command
+           :buffer output
+           :stderr errors
+           :noquery t
+           :sentinel
+           (lambda (process _event)
+             (unless (process-live-p process)
+               (unless (process-get process 'lifeos-scheduling-review-done)
+                 (process-put process 'lifeos-scheduling-review-done t)
+                 (let ((status (process-exit-status process))
+                       (stdout (if (buffer-live-p output)
+                                   (with-current-buffer output (buffer-string))
+                                 ""))
+                       (stderr-text (if (buffer-live-p errors)
+                                        (string-trim
+                                         (with-current-buffer errors (buffer-string)))
+                                      "")))
+                   (when (buffer-live-p review)
+                     (with-current-buffer review
+                       (let ((inhibit-read-only t))
+                         (goto-char (point-max))
+                         (insert stdout)
+                         (unless (string-empty-p stderr-text)
+                           (insert "\n--- stderr ---\n" stderr-text "\n"))
+                         (insert (format "\nProcess exit: %s\n" status))
+                         (special-mode)
+                         (goto-char (point-min))))
+                     (message "Scheduling review finished (exit %s)" status))
+                   (when (buffer-live-p output) (kill-buffer output))
+                   (when (buffer-live-p errors) (kill-buffer errors))))))))
+    (pop-to-buffer review)))
 
 (defun my/lifeos-solver--read-minute (prompt default-minute)
   "Read a local date/time with PROMPT, defaulting to DEFAULT-MINUTE."

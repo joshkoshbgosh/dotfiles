@@ -484,5 +484,21 @@
       (should-not (my/lifeos-schedule-restore-available-p))
       (should-error (my/lifeos-schedule-restore) :type 'user-error))))
 
+(ert-deftest my/lifeos-scheduling-review-command-targets-coordinator-fixture ()
+  (let ((my/lifeos-coordinator-root "/tmp/lifeos-coordinator")
+        (my/lifeos-scheduling-review-command "bun"))
+    (should (equal
+             (my/lifeos-scheduling-review--command)
+             '("bun" "run"
+               "/tmp/lifeos-coordinator/scripts/scheduling-review.ts"
+               "--fixture"
+               "/tmp/lifeos-coordinator/specs/002-contextual-attention/fixtures/manual-plan.org"
+               "--now" "2026-11-10T10:00:00Z"
+               "--window" "2026-11-10T10:00:00Z/2026-11-10T18:00:00Z"))))
+  (let ((my/lifeos-coordinator-root nil)
+        (my/lifeos-solver-root "/tmp/lifeos-coordinator/solver"))
+    (should (equal (my/lifeos-solver--coordinator-root)
+                   "/tmp/lifeos-coordinator/"))))
+
 (provide 'lifeos-schedule-test)
 ;;; lifeos-schedule-test.el ends here
