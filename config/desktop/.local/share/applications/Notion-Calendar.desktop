@@ -3,6 +3,7 @@ Version=1.0
 Name=Notion Calendar
 Comment=Notion Calendar
 Exec=omarchy-launch-webapp https://calendar.notion.so
+StartupWMClass=chrome-calendar.notion.so__-Default
 Terminal=false
 Type=Application
 Icon=/home/joshkosh/.local/share/applications/icons/Notion-Calendar.png

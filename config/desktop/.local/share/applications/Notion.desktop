@@ -3,6 +3,7 @@ Version=1.0
 Name=Notion
 Comment=Notion
 Exec=omarchy-launch-webapp https://notion.so
+StartupWMClass=chrome-notion.so__-Default
 Terminal=false
 Type=Application
 Icon=/home/joshkosh/.local/share/applications/icons/Notion.png
