@@ -15,3 +15,13 @@
 # generated Emacs runtime state
 /config/emacs/.config/emacs/org-supertag/
 /config/emacs/.config/emacs/.org-id-locations
+/config/emacs/.config/emacs/places.eld
+/config/emacs/.config/emacs/recentf.eld
+/config/emacs/.config/emacs/tramp
+# Emacs' url.el cookie jar holds live session cookies
+/config/emacs/.config/emacs/url/
+
+# installer-generated, machine-local symlinks (absolute targets)
+/config/bin/.local/bin/cua-driver
+/config/bin/.local/bin/python3.11
+/config/bin/.local/bin/specify
