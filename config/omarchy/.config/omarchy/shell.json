@@ -90,8 +90,8 @@
     "transparent": false
   },
   "idle": {
-    "lock": 300,
-    "screensaver": 150
+    "lock": 0,
+    "screensaver": 0
   },
   "plugins": [],
   "version": 1
