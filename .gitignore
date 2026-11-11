@@ -21,6 +21,12 @@
 # Emacs' url.el cookie jar holds live session cookies
 /config/emacs/.config/emacs/url/
 
+# backups written next to the originals by omarchy and by pacman
+**/*.bak
+**/*.bak.*
+**/*.pacnew
+**/*.pacorig
+
 # installer-generated, machine-local symlinks (absolute targets)
 /config/bin/.local/bin/cua-driver
 /config/bin/.local/bin/python3.11
