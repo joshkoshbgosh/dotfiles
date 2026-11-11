@@ -87,6 +87,7 @@
 (my/load-module "org/lifeos-agenda")
 (my/load-module "org/lifeos-supertag")
 (my/load-module "org/supertag")
+(my/load-module "org/lifeos-task-export")
 (my/load-module "org/org-ql")
 (my/load-module "org/org-super-agenda")
 (my/load-module "org/org-wild-notifier")
