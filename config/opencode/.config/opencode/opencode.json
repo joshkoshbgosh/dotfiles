@@ -1,111 +1,502 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "agent": {
-    "yolo": {
+  "model": "openai/gpt-6-astra",
+  "default_agent": "foreman",
+  "permissions": [
+    { "action": "shell", "resource": "*", "effect": "ask" },
+    { "action": "edit", "resource": "*", "effect": "ask" },
+    { "action": "subagent", "resource": "*", "effect": "deny" },
+    { "action": "read", "resource": "*", "effect": "allow" },
+    { "action": "glob", "resource": "*", "effect": "allow" },
+    { "action": "grep", "resource": "*", "effect": "allow" },
+    { "action": "webfetch", "resource": "*", "effect": "allow" },
+    { "action": "websearch", "resource": "*", "effect": "allow" },
+    { "action": "skill", "resource": "*", "effect": "allow" },
+    { "action": "external_directory", "resource": "*", "effect": "allow" },
+    { "action": "notion_*", "resource": "*", "effect": "ask" },
+    { "action": "stitch_*", "resource": "*", "effect": "ask" },
+    { "action": "emacs_*", "resource": "*", "effect": "ask" },
+    { "action": "chrome_devtools_*", "resource": "*", "effect": "ask" },
+    { "action": "emacs_emacs_get_context", "resource": "*", "effect": "allow" },
+    { "action": "emacs_emacs_get_visible_text", "resource": "*", "effect": "allow" },
+    { "action": "shell", "resource": "pwd *", "effect": "allow" },
+    { "action": "shell", "resource": "ls *", "effect": "allow" },
+    { "action": "shell", "resource": "tree *", "effect": "allow" },
+    { "action": "shell", "resource": "stat *", "effect": "allow" },
+    { "action": "shell", "resource": "file *", "effect": "allow" },
+    { "action": "shell", "resource": "wc *", "effect": "allow" },
+    { "action": "shell", "resource": "head *", "effect": "allow" },
+    { "action": "shell", "resource": "tail *", "effect": "allow" },
+    { "action": "shell", "resource": "cat *", "effect": "allow" },
+    { "action": "shell", "resource": "rg *", "effect": "allow" },
+    { "action": "shell", "resource": "grep *", "effect": "allow" },
+    { "action": "shell", "resource": "git status *", "effect": "allow" },
+    { "action": "shell", "resource": "git diff *", "effect": "allow" },
+    { "action": "shell", "resource": "git log *", "effect": "allow" },
+    { "action": "shell", "resource": "git show *", "effect": "allow" },
+    { "action": "shell", "resource": "git branch", "effect": "allow" },
+    { "action": "shell", "resource": "git branch --show-current", "effect": "allow" },
+    { "action": "shell", "resource": "git remote -v", "effect": "allow" },
+    { "action": "shell", "resource": "git rev-parse *", "effect": "allow" },
+    { "action": "shell", "resource": "git ls-files *", "effect": "allow" }
+  ],
+  "agents": {
+    "build": { "disabled": true },
+    "plan": { "disabled": true },
+    "general": { "disabled": true },
+    "explore": { "disabled": true },
+    "architect": {
+      "description": "Read-only design lead; delegates to flagship consultants only.",
+      "mode": "primary",
+      "color": "#A78BFA",
+      "model": "openai/gpt-6-astra",
+      "system": "You are an architecture and design assistant. Explore code and requirements, clarify tradeoffs, and produce actionable designs. Do not modify files or external state. Use consultant-astra for independent analysis when it materially improves a decision; delegate self-contained questions with relevant context. Use only configured subagent IDs and never override their models. Run shell inspection commands without redirections, output files, execution options, or other side effects. Ask the user to switch to Foreman for implementation.",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "consultant-astra", "effect": "allow" },
+        { "action": "subagent", "resource": "consultant-free", "effect": "allow" },
+        { "action": "experimental_image_generate", "resource": "*", "effect": "deny" },
+        { "action": "emacs_emacs_eval", "resource": "*", "effect": "deny" }
+      ]
+    },
+    "architect-free": {
+      "description": "Free read-only design lead; Xing4 29B with thinking. Delegates to consultant-free for independent analysis.",
+      "mode": "primary",
+      "color": "#A78BFA",
+      "model": "openrouter/xingchen-agi/xing4.0-29b-a4b:free",
+      "system": "You are a free architecture and design assistant. Explore code and requirements, clarify tradeoffs, and produce actionable designs. Do not modify files or external state. Use consultant-free for independent analysis when it materially improves a decision; delegate self-contained questions with relevant context. Use only configured subagent IDs and never override their models. Run shell inspection commands without redirections, output files, execution options, or other side effects. Ask the user to switch to operator-free or foreman for implementation.",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "consultant-free", "effect": "allow" },
+        { "action": "experimental_image_generate", "resource": "*", "effect": "deny" },
+        { "action": "emacs_emacs_eval", "resource": "*", "effect": "deny" }
+      ]
+    },
+    "foreman": {
+      "description": "Implementation lead; edits and runs development commands, delegates only to free budget workers.",
+      "mode": "primary",
+      "color": "#60A5FA",
+      "model": "openai/gpt-6-astra",
+      "system": "You are a software implementation lead. Inspect existing code, make focused changes, and verify results. Delegate well-scoped independent tasks to the free budget workers using their descriptions; keep architecture and integration decisions yourself. Use only configured subagent IDs and never override their models. On quota, rate-limit, or availability errors, try a different named worker instead of repeatedly retrying. If all named workers are unavailable, fall back to router-free-router (the OpenRouter free-models router). If that is also unavailable, continue yourself and tell the user. Give workers non-overlapping file ownership and review their results. Do not publish or perform destructive operations without approval.",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "shell", "resource": "bun run *", "effect": "allow" },
+        { "action": "shell", "resource": "bun test *", "effect": "allow" },
+        { "action": "shell", "resource": "bunx tsc --noEmit", "effect": "allow" },
+        { "action": "shell", "resource": "npm run *", "effect": "allow" },
+        { "action": "shell", "resource": "npm test *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm run *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm test *", "effect": "allow" },
+        { "action": "subagent", "resource": "worker-inkling", "effect": "allow" },
+        { "action": "subagent", "resource": "worker-mimo", "effect": "allow" },
+        { "action": "subagent", "resource": "worker-deepseek", "effect": "allow" },
+        { "action": "subagent", "resource": "router-lfm", "effect": "allow" },
+        { "action": "subagent", "resource": "router-flint", "effect": "allow" },
+        { "action": "subagent", "resource": "router-xing4", "effect": "allow" },
+        { "action": "subagent", "resource": "router-nemotron-vl", "effect": "allow" },
+        { "action": "subagent", "resource": "router-crouton", "effect": "allow" },
+        { "action": "subagent", "resource": "router-free-router", "effect": "allow" },
+        { "action": "subagent", "resource": "router-fusion", "effect": "allow" },
+        { "action": "subagent", "resource": "router-north-code", "effect": "allow" },
+        { "action": "subagent", "resource": "router-gemma", "effect": "allow" },
+        { "action": "subagent", "resource": "router-pareto-code", "effect": "allow" },
+        { "action": "subagent", "resource": "router-bodybuilder", "effect": "allow" }
+      ]
+    },
+    "operator": {
+      "description": "Escalated execution lead; edits and dev commands allowed without approval, other shell and MCP actions prompt.",
       "mode": "primary",
       "color": "#FF6B6B",
-      "permission": {
-        "bash": {
-	    "git add *": "allow",
-	    "git commit *": "allow",
-	    "sleep *": "allow",
-	    "graphify *": "allow",
-	    "openspec *": "allow",
-	    "echo *": "allow",
-	    "curl *": "allow",
-	    "jq *": "allow",
-	    "sed *": "allow"
-        },
-        "grep": "allow",
-        "glob": "allow",
-        "write": "allow",
-        "edit": "allow",
-        "patch": "allow",
-        "webfetch": "allow",
-        "skill": "allow"
-      }
-    }
-  },
-  "permission": {
-    "bash": {
-      "*": "ask",
-
-      "pwd": "allow",
-      "pwd *": "allow",
-      "ls": "allow",
-      "ls *": "allow",
-      "tree": "allow",
-      "tree *": "allow",
-      "stat": "allow",
-      "stat *": "allow",
-      "file": "allow",
-      "file *": "allow",
-      "wc": "allow",
-      "wc *": "allow",
-      "head": "allow",
-      "head *": "allow",
-      "tail": "allow",
-      "tail *": "allow",
-      "cat": "allow",
-      "cat *": "allow",
-      "rg": "allow",
-      "rg *": "allow",
-      "grep": "allow",
-      "grep *": "allow",
-
-      "git status": "allow",
-      "git status *": "allow",
-      "git diff": "allow",
-      "git diff *": "allow",
-      "git log": "allow",
-      "git log *": "allow",
-      "git show": "allow",
-      "git show *": "allow",
-      "git branch": "allow",
-      "git branch *": "allow",
-      "git remote -v": "allow",
-      "git rev-parse --abbrev-ref HEAD": "allow",
-      "git ls-files": "allow",
-      "git ls-files *": "allow",
-
-      "bun run *": "allow",
-      "bunx tsc --noEmit": "allow",
-      "bun test *": "allow"
+      "model": "openai/gpt-6-astra",
+      "system": "You are an autonomous engineering and operations assistant. Complete the user's work, inspect before changing things, preserve unrelated work, and verify outcomes. You have escalated permissions: edits and common dev commands run without approval, but unknown shell commands and MCP calls prompt. Delegate difficult analysis to consultant-astra and bounded implementation to any free worker. Use only configured subagent IDs and never override their models. On quota or availability errors, switch workers; if all named workers are unavailable, fall back to router-free-router (the OpenRouter free-models router). If that is also unavailable, continue yourself. Assign non-overlapping files and review delegated results. Consultants remain read-only and workers retain implementation-level permissions; handle operations beyond their permissions yourself.",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "shell", "resource": "bun run *", "effect": "allow" },
+        { "action": "shell", "resource": "bun test *", "effect": "allow" },
+        { "action": "shell", "resource": "bunx tsc --noEmit", "effect": "allow" },
+        { "action": "shell", "resource": "npm run *", "effect": "allow" },
+        { "action": "shell", "resource": "npm test *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm run *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm test *", "effect": "allow" },
+        { "action": "shell", "resource": "pwd *", "effect": "allow" },
+        { "action": "shell", "resource": "ls *", "effect": "allow" },
+        { "action": "shell", "resource": "tree *", "effect": "allow" },
+        { "action": "shell", "resource": "stat *", "effect": "allow" },
+        { "action": "shell", "resource": "file *", "effect": "allow" },
+        { "action": "shell", "resource": "wc *", "effect": "allow" },
+        { "action": "shell", "resource": "head *", "effect": "allow" },
+        { "action": "shell", "resource": "tail *", "effect": "allow" },
+        { "action": "shell", "resource": "cat *", "effect": "allow" },
+        { "action": "shell", "resource": "rg *", "effect": "allow" },
+        { "action": "shell", "resource": "grep *", "effect": "allow" },
+        { "action": "shell", "resource": "git status *", "effect": "allow" },
+        { "action": "shell", "resource": "git diff *", "effect": "allow" },
+        { "action": "shell", "resource": "git log *", "effect": "allow" },
+        { "action": "shell", "resource": "git show *", "effect": "allow" },
+        { "action": "shell", "resource": "git branch", "effect": "allow" },
+        { "action": "shell", "resource": "git branch --show-current", "effect": "allow" },
+        { "action": "shell", "resource": "git remote -v", "effect": "allow" },
+        { "action": "shell", "resource": "git rev-parse *", "effect": "allow" },
+        { "action": "shell", "resource": "git ls-files *", "effect": "allow" },
+        { "action": "shell", "resource": "*", "effect": "ask" },
+        { "action": "subagent", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "consultant-astra", "effect": "allow" },
+        { "action": "subagent", "resource": "worker-inkling", "effect": "allow" },
+        { "action": "subagent", "resource": "worker-mimo", "effect": "allow" },
+        { "action": "subagent", "resource": "worker-deepseek", "effect": "allow" },
+        { "action": "subagent", "resource": "router-lfm", "effect": "allow" },
+        { "action": "subagent", "resource": "router-flint", "effect": "allow" },
+        { "action": "subagent", "resource": "router-xing4", "effect": "allow" },
+        { "action": "subagent", "resource": "router-nemotron-vl", "effect": "allow" },
+        { "action": "subagent", "resource": "router-crouton", "effect": "allow" },
+        { "action": "subagent", "resource": "router-free-router", "effect": "allow" },
+        { "action": "subagent", "resource": "router-fusion", "effect": "allow" },
+        { "action": "subagent", "resource": "router-north-code", "effect": "allow" },
+        { "action": "subagent", "resource": "router-gemma", "effect": "allow" },
+        { "action": "subagent", "resource": "router-pareto-code", "effect": "allow" },
+        { "action": "subagent", "resource": "router-bodybuilder", "effect": "allow" },
+        { "action": "external_directory", "resource": "*", "effect": "ask" },
+        { "action": "notion_*", "resource": "*", "effect": "ask" },
+        { "action": "stitch_*", "resource": "*", "effect": "ask" },
+        { "action": "emacs_*", "resource": "*", "effect": "ask" },
+        { "action": "chrome_devtools_*", "resource": "*", "effect": "ask" }
+      ]
     },
-
-    "edit": "ask",
-    "webfetch": "allow",
-    "external_directory": "ask",
-    "doom_loop": "ask",
-    "skill": "ask"
+    "operator-free": {
+      "description": "Free escalated execution lead; Gemma 26B with thinking. Edits and dev commands allowed without approval, other shell and MCP actions prompt.",
+      "mode": "primary",
+      "color": "#FF6B6B",
+      "model": "openrouter/google/gemma-4-26b-a4b-it:free",
+      "system": "You are a free autonomous engineering and operations assistant. Complete the user's work, inspect before changing things, preserve unrelated work, and verify outcomes. You have escalated permissions: edits and common dev commands run without approval, but unknown shell commands and MCP calls prompt. Delegate difficult analysis to consultant-free and bounded implementation to any free worker. Use only configured subagent IDs and never override their models. On quota or availability errors, switch workers; if all named workers are unavailable, fall back to router-free-router (the OpenRouter free-models router). If that is also unavailable, continue yourself. Assign non-overlapping files and review delegated results. Consultants remain read-only and workers retain implementation-level permissions; handle operations beyond their permissions yourself.",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "shell", "resource": "bun run *", "effect": "allow" },
+        { "action": "shell", "resource": "bun test *", "effect": "allow" },
+        { "action": "shell", "resource": "bunx tsc --noEmit", "effect": "allow" },
+        { "action": "shell", "resource": "npm run *", "effect": "allow" },
+        { "action": "shell", "resource": "npm test *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm run *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm test *", "effect": "allow" },
+        { "action": "shell", "resource": "pwd *", "effect": "allow" },
+        { "action": "shell", "resource": "ls *", "effect": "allow" },
+        { "action": "shell", "resource": "tree *", "effect": "allow" },
+        { "action": "shell", "resource": "stat *", "effect": "allow" },
+        { "action": "shell", "resource": "file *", "effect": "allow" },
+        { "action": "shell", "resource": "wc *", "effect": "allow" },
+        { "action": "shell", "resource": "head *", "effect": "allow" },
+        { "action": "shell", "resource": "tail *", "effect": "allow" },
+        { "action": "shell", "resource": "cat *", "effect": "allow" },
+        { "action": "shell", "resource": "rg *", "effect": "allow" },
+        { "action": "shell", "resource": "grep *", "effect": "allow" },
+        { "action": "shell", "resource": "git status *", "effect": "allow" },
+        { "action": "shell", "resource": "git diff *", "effect": "allow" },
+        { "action": "shell", "resource": "git log *", "effect": "allow" },
+        { "action": "shell", "resource": "git show *", "effect": "allow" },
+        { "action": "shell", "resource": "git branch", "effect": "allow" },
+        { "action": "shell", "resource": "git branch --show-current", "effect": "allow" },
+        { "action": "shell", "resource": "git remote -v", "effect": "allow" },
+        { "action": "shell", "resource": "git rev-parse *", "effect": "allow" },
+        { "action": "shell", "resource": "git ls-files *", "effect": "allow" },
+        { "action": "shell", "resource": "*", "effect": "ask" },
+        { "action": "subagent", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "consultant-free", "effect": "allow" },
+        { "action": "subagent", "resource": "worker-inkling", "effect": "allow" },
+        { "action": "subagent", "resource": "worker-mimo", "effect": "allow" },
+        { "action": "subagent", "resource": "worker-deepseek", "effect": "allow" },
+        { "action": "subagent", "resource": "router-lfm", "effect": "allow" },
+        { "action": "subagent", "resource": "router-flint", "effect": "allow" },
+        { "action": "subagent", "resource": "router-xing4", "effect": "allow" },
+        { "action": "subagent", "resource": "router-nemotron-vl", "effect": "allow" },
+        { "action": "subagent", "resource": "router-crouton", "effect": "allow" },
+        { "action": "subagent", "resource": "router-free-router", "effect": "allow" },
+        { "action": "subagent", "resource": "router-fusion", "effect": "allow" },
+        { "action": "subagent", "resource": "router-north-code", "effect": "allow" },
+        { "action": "subagent", "resource": "router-gemma", "effect": "allow" },
+        { "action": "subagent", "resource": "router-pareto-code", "effect": "allow" },
+        { "action": "subagent", "resource": "router-bodybuilder", "effect": "allow" },
+        { "action": "external_directory", "resource": "*", "effect": "ask" },
+        { "action": "notion_*", "resource": "*", "effect": "ask" },
+        { "action": "stitch_*", "resource": "*", "effect": "ask" },
+        { "action": "emacs_*", "resource": "*", "effect": "ask" },
+        { "action": "chrome_devtools_*", "resource": "*", "effect": "ask" }
+      ]
+    },
+    "consultant-astra": {
+      "description": "Flagship Astra, default thinking. Independent architecture analysis, hard debugging, and design critique. Read-only; prefer workers for routine implementation.",
+      "mode": "subagent",
+      "model": "openai/gpt-6-astra",
+      "system": "You are a read-only technical consultant. Investigate the assigned question, ground conclusions in code and evidence, and report tradeoffs and actionable recommendations to the parent. Do not modify files or external state. Use inspection commands without redirections or side effects. Do not launch subagents.",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "question", "resource": "*", "effect": "deny" },
+        { "action": "experimental_image_generate", "resource": "*", "effect": "deny" },
+        { "action": "emacs_emacs_eval", "resource": "*", "effect": "deny" }
+      ]
+    },
+    "consultant-free": {
+      "description": "Free independent architecture analysis and design critique; Xing4 29B with thinking. Read-only; prefer workers for routine implementation.",
+      "mode": "subagent",
+      "model": "openrouter/xingchen-agi/xing4.0-29b-a4b:free",
+      "system": "You are a free read-only technical consultant. Investigate the assigned question, ground conclusions in code and evidence, and report tradeoffs and actionable recommendations to the parent. Do not modify files or external state. Use inspection commands without redirections or side effects. Do not launch subagents.",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "question", "resource": "*", "effect": "deny" },
+        { "action": "experimental_image_generate", "resource": "*", "effect": "deny" },
+        { "action": "emacs_emacs_eval", "resource": "*", "effect": "deny" }
+      ]
+    },
+    "worker-inkling": {
+      "description": "Free OpenRouter LFM3-1.7B. First choice for small mechanical edits, focused searches, and concise summaries. Keep tasks bounded; route complex reasoning to DeepSeek or the lead. Quota-limited; try Crouton on availability errors.",
+      "mode": "subagent",
+      "model": "openrouter/liquid/lfm-3-1.7b:free",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "question", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "bun run *", "effect": "allow" },
+        { "action": "shell", "resource": "bun test *", "effect": "allow" },
+        { "action": "shell", "resource": "bunx tsc --noEmit", "effect": "allow" },
+        { "action": "shell", "resource": "npm run *", "effect": "allow" },
+        { "action": "shell", "resource": "npm test *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm run *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm test *", "effect": "allow" }
+      ]
+    },
+    "worker-mimo": {
+      "description": "Free OpenRouter Crouton Alpha. Bounded implementation and test tasks; alternative when Inkling is unavailable or a task needs another attempt. Quota-limited; switch to Nemotron on availability errors. Lead reviews results.",
+      "mode": "subagent",
+      "model": "openrouter/stealth/crouton-alpha",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "question", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "bun run *", "effect": "allow" },
+        { "action": "shell", "resource": "bun test *", "effect": "allow" },
+        { "action": "shell", "resource": "bunx tsc --noEmit", "effect": "allow" },
+        { "action": "shell", "resource": "npm run *", "effect": "allow" },
+        { "action": "shell", "resource": "npm test *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm run *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm test *", "effect": "allow" }
+      ]
+    },
+    "worker-deepseek": {
+      "description": "Free OpenRouter Nemotron 3.5 Super VL. Use for bounded debugging, logic-heavy implementation, or a second implementation opinion. Lead owns architectural decisions. Quota-limited; fall back to Crouton or Inkling.",
+      "mode": "subagent",
+      "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "question", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "bun run *", "effect": "allow" },
+        { "action": "shell", "resource": "bun test *", "effect": "allow" },
+        { "action": "shell", "resource": "bunx tsc --noEmit", "effect": "allow" },
+        { "action": "shell", "resource": "npm run *", "effect": "allow" },
+        { "action": "shell", "resource": "npm test *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm run *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm test *", "effect": "allow" }
+      ]
+    },
+    "router-lfm": {
+      "description": "Free OpenRouter LFM3-1.7B. Tiny 1.7B model; best for very small mechanical edits, quick searches, and concise summaries where a large model is overkill.",
+      "mode": "subagent",
+      "model": "openrouter/liquid/lfm-3-1.7b:free",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "question", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "bun run *", "effect": "allow" },
+        { "action": "shell", "resource": "bun test *", "effect": "allow" },
+        { "action": "shell", "resource": "bunx tsc --noEmit", "effect": "allow" },
+        { "action": "shell", "resource": "npm run *", "effect": "allow" },
+        { "action": "shell", "resource": "npm test *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm run *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm test *", "effect": "allow" }
+      ]
+    },
+    "router-flint": {
+      "description": "Free OpenRouter Flint v1.0. General-purpose free model; good fallback for bounded implementation tasks when other workers are rate-limited.",
+      "mode": "subagent",
+      "model": "openrouter/recursive/flint-v1.0:free",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "question", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "bun run *", "effect": "allow" },
+        { "action": "shell", "resource": "bun test *", "effect": "allow" },
+        { "action": "shell", "resource": "bunx tsc --noEmit", "effect": "allow" },
+        { "action": "shell", "resource": "npm run *", "effect": "allow" },
+        { "action": "shell", "resource": "npm test *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm run *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm test *", "effect": "allow" }
+      ]
+    },
+    "router-xing4": {
+      "description": "Free OpenRouter Xing4.0 29B A4B. 29B parameter model with thinking variant; suited to reasoning-heavy analysis and debugging when you need more capability than the small workers.",
+      "mode": "subagent",
+      "model": "openrouter/xingchen-agi/xing4.0-29b-a4b:free",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "question", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "bun run *", "effect": "allow" },
+        { "action": "shell", "resource": "bun test *", "effect": "allow" },
+        { "action": "shell", "resource": "bunx tsc --noEmit", "effect": "allow" },
+        { "action": "shell", "resource": "npm run *", "effect": "allow" },
+        { "action": "shell", "resource": "npm test *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm run *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm test *", "effect": "allow" }
+      ]
+    },
+    "router-nemotron-vl": {
+      "description": "Free OpenRouter Nemotron 3.5 Super VL. Vision-language model; best choice for tasks involving images, screenshots, or visual reasoning alongside code.",
+      "mode": "subagent",
+      "model": "openrouter/nvidia/nemotron-3.5-super-vl:free",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "question", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "bun run *", "effect": "allow" },
+        { "action": "shell", "resource": "bun test *", "effect": "allow" },
+        { "action": "shell", "resource": "bunx tsc --noEmit", "effect": "allow" },
+        { "action": "shell", "resource": "npm run *", "effect": "allow" },
+        { "action": "shell", "resource": "npm test *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm run *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm test *", "effect": "allow" }
+      ]
+    },
+    "router-crouton": {
+      "description": "Free OpenRouter Crouton Alpha. Cost-zero model with thinking variants; general bounded implementation and test tasks.",
+      "mode": "subagent",
+      "model": "openrouter/stealth/crouton-alpha",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "question", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "bun run *", "effect": "allow" },
+        { "action": "shell", "resource": "bun test *", "effect": "allow" },
+        { "action": "shell", "resource": "bunx tsc --noEmit", "effect": "allow" },
+        { "action": "shell", "resource": "npm run *", "effect": "allow" },
+        { "action": "shell", "resource": "npm test *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm run *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm test *", "effect": "allow" }
+      ]
+    },
+    "router-free-router": {
+      "description": "Free OpenRouter Free Models Router. Meta-router that routes to available free models; use when you want OpenRouter to pick the best free option automatically.",
+      "mode": "subagent",
+      "model": "openrouter/openrouter/free",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "question", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "bun run *", "effect": "allow" },
+        { "action": "shell", "resource": "bun test *", "effect": "allow" },
+        { "action": "shell", "resource": "bunx tsc --noEmit", "effect": "allow" },
+        { "action": "shell", "resource": "npm run *", "effect": "allow" },
+        { "action": "shell", "resource": "npm test *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm run *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm test *", "effect": "allow" }
+      ]
+    },
+    "router-fusion": {
+      "description": "Free OpenRouter Fusion. Cost-zero router model; general bounded tasks, useful as another fallback when named workers are unavailable.",
+      "mode": "subagent",
+      "model": "openrouter/openrouter/fusion",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "question", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "bun run *", "effect": "allow" },
+        { "action": "shell", "resource": "bun test *", "effect": "allow" },
+        { "action": "shell", "resource": "bunx tsc --noEmit", "effect": "allow" },
+        { "action": "shell", "resource": "npm run *", "effect": "allow" },
+        { "action": "shell", "resource": "npm test *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm run *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm test *", "effect": "allow" }
+      ]
+    },
+    "router-north-code": {
+      "description": "Free OpenRouter Cohere North Mini Code. Code-specialist free model with thinking variant; first choice for code-focused implementation and test tasks.",
+      "mode": "subagent",
+      "model": "openrouter/cohere/north-mini-code:free",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "question", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "bun run *", "effect": "allow" },
+        { "action": "shell", "resource": "bun test *", "effect": "allow" },
+        { "action": "shell", "resource": "bunx tsc --noEmit", "effect": "allow" },
+        { "action": "shell", "resource": "npm run *", "effect": "allow" },
+        { "action": "shell", "resource": "npm test *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm run *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm test *", "effect": "allow" }
+      ]
+    },
+    "router-gemma": {
+      "description": "Free OpenRouter Gemma 4 26B A4B. 26B instruction-tuned model with thinking variant; good for instruction-following and general reasoning tasks.",
+      "mode": "subagent",
+      "model": "openrouter/google/gemma-4-26b-a4b-it:free",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "question", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "bun run *", "effect": "allow" },
+        { "action": "shell", "resource": "bun test *", "effect": "allow" },
+        { "action": "shell", "resource": "bunx tsc --noEmit", "effect": "allow" },
+        { "action": "shell", "resource": "npm run *", "effect": "allow" },
+        { "action": "shell", "resource": "npm test *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm run *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm test *", "effect": "allow" }
+      ]
+    },
+    "router-pareto-code": {
+      "description": "Free OpenRouter Pareto Code Router. Cost-zero code-focused router; route code implementation tasks here when North Mini Code is unavailable.",
+      "mode": "subagent",
+      "model": "openrouter/openrouter/pareto-code",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "question", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "bun run *", "effect": "allow" },
+        { "action": "shell", "resource": "bun test *", "effect": "allow" },
+        { "action": "shell", "resource": "bunx tsc --noEmit", "effect": "allow" },
+        { "action": "shell", "resource": "npm run *", "effect": "allow" },
+        { "action": "shell", "resource": "npm test *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm run *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm test *", "effect": "allow" }
+      ]
+    },
+    "router-bodybuilder": {
+      "description": "Free OpenRouter Body Builder (beta). Cost-zero beta model; use as a last-resort fallback when all other workers are rate-limited or unavailable.",
+      "mode": "subagent",
+      "model": "openrouter/openrouter/bodybuilder",
+      "permissions": [
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "question", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "bun run *", "effect": "allow" },
+        { "action": "shell", "resource": "bun test *", "effect": "allow" },
+        { "action": "shell", "resource": "bunx tsc --noEmit", "effect": "allow" },
+        { "action": "shell", "resource": "npm run *", "effect": "allow" },
+        { "action": "shell", "resource": "npm test *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm run *", "effect": "allow" },
+        { "action": "shell", "resource": "pnpm test *", "effect": "allow" }
+      ]
+    }
   },
   "mcp": {
-    "notion": {
-      "type": "remote",
-      "url": "https://mcp.notion.com/mcp",
-      "enabled": true,
-      "oauth": {}
-    },
-  "stitch": {
-      "type": "remote",
-      "url": "https://stitch.googleapis.com/mcp",
-      "enabled": true,
-      "headers": {
-        "Accept": "application/json",
-        "X-Goog-Api-Key": "SET_LOCALLY"
+    "servers": {
+      "notion": {
+        "type": "remote",
+        "url": "https://mcp.notion.com/mcp",
+        "disabled": false,
+        "oauth": {}
+      },
+      "stitch": {
+        "type": "remote",
+        "url": "https://stitch.googleapis.com/mcp",
+        "disabled": false,
+        "oauth": false,
+        "headers": {
+          "Accept": "application/json",
+          "X-Goog-User-Project": "telos-513920"
+        }
+      },
+      "emacs": {
+        "type": "local",
+        "command": ["npx", "-y", "@keegancsmith/emacs-mcp-server"],
+        "disabled": false
+      },
+      "chrome-devtools": {
+        "type": "local",
+        "command": ["npx", "-y", "chrome-devtools-mcp@latest"]
       }
-    },
-    "emacs": {
-      "type": "local",
-      "command": ["npx", "-y", "@keegancsmith/emacs-mcp-server"],
-      "enabled": true
-    },
-    "chrome-devtools": {
-      "type": "local",
-      "command": ["npx", "-y", "chrome-devtools-mcp@latest"]
     }
-  },
-  "plugin": [
-    "opencode-mobile@latest"
-  ]
+  }
 }
