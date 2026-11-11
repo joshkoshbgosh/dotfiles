@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+# Run the git-installed Hermes in ACP mode. See ./hermes for why the paths are
+# $HOME-relative and why PYTHONPATH/PYTHONHOME are cleared.
+unset PYTHONPATH
+unset PYTHONHOME
+
+exec "$HOME/.hermes/hermes-agent/venv/bin/python" \
+     "$HOME/.hermes/hermes-agent/hermes" acp "$@"
