@@ -147,6 +147,9 @@ the real problem."
 
 ;; --- markdown ---
 (my/load-module "markdown/markdown-mode")
+;; Inline rendering (C-c m o) and TOC (C-c m t / C-c m d)
+(my/load-module "markdown/overlays")
+(my/load-module "markdown/toc")
 ;; d2 / mermaid / plantuml / graphviz for md and org blocks (#2)
 (my/load-module "markdown/diagrams")
 
