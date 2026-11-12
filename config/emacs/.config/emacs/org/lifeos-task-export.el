@@ -18,6 +18,36 @@
 (declare-function supertag-scan-sync-directories "supertag-services-sync" (&optional all-files-p))
 (declare-function supertag-sync-full-rescan "supertag-services-sync" ())
 (defconst my/lifeos-task-export-tag-id "f2d7075f-d8a8-45c0-9e44-40270fb9e99d")
+
+(defun my/lifeos-task-export--dependency-targets ()
+  "Return depends-on target IDs from the current heading's own body.
+Descendant headings are excluded; dependency semantics belong to the task
+entry, not its children."
+  (save-excursion
+    (org-back-to-heading t)
+    (forward-line 1)
+    (let ((start (point))
+          (end (save-excursion
+                 (if (re-search-forward "^\\*+ " nil t)
+                     (match-beginning 0)
+                   (point-max))))
+          targets)
+      (save-restriction
+        (narrow-to-region start end)
+        (goto-char start)
+        (while (re-search-forward "\\[\\[depends-on:\\([^]]+\\)\\]" nil t)
+          (push (match-string-no-properties 1) targets)))
+      (nreverse targets))))
+
+(defun my/lifeos-task-export--work-mode ()
+  "Return the task's explicit work mode, falling back to the project default.
+Empty property values are treated as unset, matching the groomed scaffold."
+  (let ((own (org-entry-get nil "WORK_MODE")))
+    (if (and own (not (string-empty-p own)))
+        own
+      (let ((default (org-entry-get nil "DEFAULT_WORK_MODE" t)))
+        (and default (not (string-empty-p default)) default)))))
+
 (defconst my/lifeos-task-export-fingerprint-version "v1"
   "Version prefix for `my/lifeos-task-export--fingerprint' output.")
 (defconst my/lifeos-task-export-snapshot-version 2
@@ -309,7 +339,15 @@ export is diagnostic only; absence never means deletion."
                                                              (via . "supertag-api-query/node")))
                                               (title . ,(plist-get node :title))
                                               (status . ,(if (org-entry-is-done-p) "complete" "open"))
-                                              (deadline . ,deadline) (effort . ,effort))))))
+                                              (deadline . ,deadline) (effort . ,effort)
+                                              ;; A03 policy facts. WORK_MODE is
+                                              ;; task-local; DEFAULT_WORK_MODE is
+                                              ;; inherited from the nearest
+                                              ;; project ancestor.
+                                              (workMode . ,(my/lifeos-task-export--work-mode))
+                                              (waitUntil . ,(org-entry-get nil "WAIT_UNTIL"))
+                                              (scheduled . ,(org-entry-get nil "SCHEDULED"))
+                                              (prerequisites . ,(vconcat (my/lifeos-task-export--dependency-targets))))))))
                          nil 'file)
                         (unless (= (or found 0) 1) (error "Missing or duplicate Org ID"))
                         (push record tasks)))

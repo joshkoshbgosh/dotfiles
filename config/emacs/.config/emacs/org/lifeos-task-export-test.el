@@ -279,6 +279,55 @@
         (my/lifeos-acquire-task-snapshot output root "UTC"))
       (should-not modified-file-kills))))
 
+(ert-deftest lifeos-task-export-carries-a03-policy-facts ()
+  (lifeos-task-export-test--with-acquisition
+    (with-temp-file source
+      (insert "* TODO Prepare report #task
+DEADLINE: <2026-11-12 Thu> SCHEDULED: <2026-11-11 Wed 10:00>
+:PROPERTIES:
+:ID: id-1
+:WORK_MODE: Deep
+:WAIT_UNTIL: <2026-11-11 Wed 09:00>
+:EFFORT: 1:00
+:END:
+[[depends-on:prereq-a]]
+"))
+    (my/lifeos-acquire-task-snapshot output root "UTC")
+    (let* ((data (lifeos-task-export-test--read output))
+           (task (car (alist-get 'tasks data))))
+      (should (eq (alist-get 'complete data) t))
+      (should (equal (alist-get 'workMode task) "Deep"))
+      (should (equal (alist-get 'waitUntil task) "<2026-11-11 Wed 09:00>"))
+      (should (equal (alist-get 'scheduled task) "<2026-11-11 Wed 10:00>"))
+      (should (equal (alist-get 'prerequisites task) '("prereq-a")))
+      ;; The dependency target is not a descendant dependency.
+      (with-temp-file (expand-file-name "child.org" root)
+        (insert "* TODO Child #task\n:PROPERTIES:\n:ID: child\n:END:\n"))
+      (should (equal (alist-get 'prerequisites
+                                (car (alist-get 'tasks
+                                                (lifeos-task-export-test--read output))))
+                     '("prereq-a"))))))
+
+(ert-deftest lifeos-task-export-work-mode-inherits-project-default ()
+  (with-temp-buffer
+    (insert "* Project #project
+:PROPERTIES:
+:DEFAULT_WORK_MODE: Shallow
+:END:
+** TODO Child #task
+:PROPERTIES:
+:ID: child
+:WORK_MODE:
+:END:
+")
+    (org-mode)
+    (goto-char (point-min))
+    (re-search-forward "TODO Child")
+    (org-back-to-heading t)
+    (should (equal (my/lifeos-task-export--work-mode) "Shallow"))
+    (org-entry-put nil "WORK_MODE" "Deep")
+    (should (equal (my/lifeos-task-export--work-mode) "Deep"))))
+
 (ert-deftest lifeos-task-export-reads-status-from-verified-disk-bytes ()
   (lifeos-task-export-test--with-acquisition
     ;; The public node summary exposes no :todo, so status must come from the
