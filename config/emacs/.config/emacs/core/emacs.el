@@ -42,5 +42,9 @@
   ;; Line numbers: absolute current, relative others
   (setq display-line-numbers-type 'relative
         display-line-numbers-current-absolute t)
-  (global-display-line-numbers-mode 1))
+  (global-display-line-numbers-mode 1)
+  ;; With evil gone there is no visual mode, so make typing over an active
+  ;; region replace it the way it did in evil.  Without this, `C-SPC' plus
+  ;; typing merely inserts next to the selection.
+  (delete-selection-mode 1))
 

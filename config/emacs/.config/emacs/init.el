@@ -48,10 +48,8 @@ the real problem."
 (my/load-module "core/keyfreq")
 
 ;; --- editing ---
-(my/load-module "evil/undo-fu")
-(my/load-module "evil/evil")
-(my/load-module "evil/evil-collection")
-(my/load-module "evil/evil-commentary")
+;; Undo/redo. Evil used to provide these bindings through `undo-fu'.
+(my/load-module "core/undo-fu")
 
 ;; --- tabs & appearance ---
 ;; Centaur-tabs disabled: the tab strip was visual noise (#10).

@@ -15,7 +15,4 @@
   :straight (eat :host codeberg :repo "akib/emacs-eat")
   :config
   (add-hook 'eat-mode-hook (lambda () (display-line-numbers-mode -1)) t)
-  (keymap-set eat-mode-map "C-c C-c" #'eat-line-send-interrupt)
-  (with-eval-after-load 'evil
-    (evil-set-initial-state 'eat-mode 'emacs)
-    (add-hook 'eat-mode-hook #'evil-emacs-state)))
+  (keymap-set eat-mode-map "C-c C-c" #'eat-line-send-interrupt))

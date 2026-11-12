@@ -292,15 +292,9 @@
   ;; (advice-remove 'agent-shell--send-permission-response #'my/agent-shell--permission-feedback-response)
   ;; (advice-add 'agent-shell--send-permission-response :around #'my/agent-shell--permission-feedback-response)
   (add-hook 'agent-shell-mode-hook (lambda () (display-line-numbers-mode -1)) t)
-  (with-eval-after-load 'evil
-    (evil-define-key 'insert agent-shell-mode-map (kbd "RET") #'newline)
-    (evil-define-key 'normal agent-shell-mode-map (kbd "RET") #'comint-send-input)
-    (add-hook 'diff-mode-hook
-              (lambda ()
-                (when (string-match-p "\\*agent-shell-diff\\*" (buffer-name))
-                  (evil-emacs-state))))
-    (dolist (state '(normal motion))
-      (evil-define-key state agent-shell-mode-map
-        (kbd "C-c C-k") #'my/agent-shell-force-reset)))
+  ;; `C-c C-c' is already `agent-shell-interrupt' from the package; this adds
+  ;; the force-reset escape hatch next to it.  RET sends the input and
+  ;; `S-RET'/`M-RET' insert a newline, inherited from comint/shell-maker now
+  ;; that evil is no longer remapping RET per state.
   (define-key agent-shell-mode-map (kbd "C-c C-k") #'my/agent-shell-force-reset))
 

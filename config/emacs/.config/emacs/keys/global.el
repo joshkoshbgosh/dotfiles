@@ -1,13 +1,14 @@
 ;; -*- lexical-binding: t -*-
 ;;; keys/global.el --- personal key bindings
 
-;; The `M-;' leader is gone, and with it `general' and the evil state
-;; auxiliary maps it was built on.  Everything below is a plain `global-map'
-;; binding on `C-c', the prefix Emacs reserves for the user.
+;; The `M-;' leader is gone, and with it `general' and the per-state
+;; auxiliary keymaps it was built on.  Evil is gone too, so everything below is
+;; a plain `global-map' binding on `C-c', the prefix Emacs reserves for the
+;; user, and it applies in every buffer regardless of editing mode.
 ;;
 ;; Single keystroke, no sub-trees: `C-c P' is `project-find-file', not
 ;; `C-c p f'.  Keeping the whole table in one file also means it no longer
-;; depends on load order, on evil, or on a package that defines a prefix map.
+;; depends on load order or on a package that defines a prefix map.
 ;;
 ;; Not bound here on purpose:
 ;;   `C-c w'  org-timegrid-week  (bound in org/org-timegrid.el)
@@ -70,7 +71,8 @@
 (keymap-set global-map "C-c T" #'vterm)
 
 ;; --- window navigation ---
-;; Not a leader, and not evil-specific: these work in every evil state.
+;; Plain global bindings, not a mode: they work in every buffer and every
+;; editing state, which is what `evil-window-...' used to approximate.
 (keymap-set global-map "M-h" #'windmove-left)
 (keymap-set global-map "M-j" #'windmove-down)
 (keymap-set global-map "M-k" #'windmove-up)

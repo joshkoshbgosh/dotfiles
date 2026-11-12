@@ -79,11 +79,5 @@
   ;; No key-hint segment in the mode-line: those hints were noise and partly
   ;; stale. `q' already quits (dirvish binds it to `dirvish-quit'), and
   ;; `C-h m' / embark show what is available where.
-  (setq dirvish-mode-line-format '(:left (sort symlink) :right (vc-state)))
-
-  ;; Evil keybindings for dired navigation
-  (with-eval-after-load 'evil
-    (define-key dired-mode-map [remap evil-forward-char] #'dired-find-file)
-    (define-key dired-mode-map [remap evil-backward-char] #'dired-up-directory)
-    (define-key dired-mode-map [remap evil-previous-line-first-non-blank] #'dired-up-directory)))
+  (setq dirvish-mode-line-format '(:left (sort symlink) :right (vc-state))))
 
