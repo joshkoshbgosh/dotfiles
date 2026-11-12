@@ -2,9 +2,11 @@
 (require 'ert)
 (require 'cl-lib)
 (require 'json)
-(load (expand-file-name "lifeos-task-export.el"
-                        (file-name-directory (or load-file-name buffer-file-name)))
-      nil t)
+(let ((directory (file-name-directory (or load-file-name buffer-file-name))))
+  ;; Append so this config directory cannot shadow the built-in `org' library.
+  (add-to-list 'load-path directory t)
+  (load (expand-file-name "lifeos-planning.el" directory) nil t)
+  (load (expand-file-name "lifeos-task-export.el" directory) nil t))
 (defvar supertag--initialized nil)
 
 (ert-deftest lifeos-task-export-refuses-uninitialized-store ()
@@ -340,6 +342,78 @@ DEADLINE: <2026-11-12 Thu> SCHEDULED: <2026-11-11 Wed 10:00>
                                 (car (alist-get 'tasks
                                                 (lifeos-task-export-test--read output))))
                      '("prereq-a"))))))
+
+(ert-deftest lifeos-task-export-carries-correction-anchored-effort ()
+  (lifeos-task-export-test--with-acquisition
+    (let* ((episode "e-effort-test")
+           (effective "2026-10-12T13:00:00Z")
+           (correction (my/lifeos--effort-correction-id "id-1" episode effective 45))
+           (revision (my/lifeos--effort-correction-revision "id-1" episode effective 45))
+           (clock-start "2026-10-12 Mon 09:00")
+           (expected-start (format-time-string
+                            "%Y-%m-%dT%H:%M:%SZ"
+                            (org-time-string-to-time clock-start) t)))
+      (with-temp-file source
+        (insert (format "* TODO Prepare report #task
+:PROPERTIES:
+:ID: id-1
+:EFFORT: 1:00
+:ORIGINAL_EFFORT: 1:00
+:END:
+DEADLINE: <2026-11-12 Thu>
+:LIFEOS_EFFORT:
+EPISODE id=%s task=id-1 start=2000-01-01T00:00:00Z
+CORRECTION id=%s task=id-1 episode=%s effective=%s remaining=45 revision=%s
+:END:
+:LOGBOOK:
+CLOCK: [%s]--[2026-10-12 Mon 09:30] =>  0:30
+:END:
+" episode correction episode effective revision clock-start)))
+      (my/lifeos-acquire-task-snapshot output root "UTC")
+      (let* ((data (lifeos-task-export-test--read output))
+             (task (car (alist-get 'tasks data)))
+             (effort (alist-get 'effortState task))
+             (clocks (alist-get 'clocks effort))
+             (corrections (alist-get 'corrections effort)))
+        (should (eq (alist-get 'complete data) t))
+        (should (eq (alist-get 'valid effort) t))
+        (should (equal (alist-get 'clockZoneBasis effort) "machine-local"))
+        (should (equal (alist-get 'provenance effort) "explicit-initial"))
+        (should (equal (alist-get 'episodeId effort) episode))
+        (should (equal (alist-get 'episodeStartedAt effort)
+                       "2000-01-01T00:00:00Z"))
+        (should (= (length corrections) 1))
+        (should (equal (alist-get 'correctionId (car corrections)) correction))
+        (should (= (alist-get 'remainingMinutes (car corrections)) 45))
+        (should (= (length clocks) 1))
+        (should (equal (alist-get 'episodeId (car clocks)) episode))
+        (should (equal (alist-get 'startedAt (car clocks)) expected-start))))))
+
+(ert-deftest lifeos-task-export-keeps-corrupt-effort-evidence-unverified ()
+  (lifeos-task-export-test--with-acquisition
+    (with-temp-file source
+      (insert "* TODO Prepare report #task
+:PROPERTIES:
+:ID: id-1
+:EFFORT: 1:00
+:ORIGINAL_EFFORT: 1:00
+:END:
+:LIFEOS_EFFORT:
+EPISODE id=e-1 task=id-1 start=2000-01-01T00:00:00Z
+CORRECTION id=c-bad task=id-1 episode=missing effective=2026-10-12T13:00:00Z remaining=45 revision=bad
+:END:
+"))
+    (my/lifeos-acquire-task-snapshot output root "UTC")
+    (let* ((data (lifeos-task-export-test--read output))
+           (task (car (alist-get 'tasks data)))
+           (effort (alist-get 'effortState task)))
+      ;; Unknown effort is not a task-source failure: the task bytes and
+      ;; identity are still verified, but no correction/clock may be trusted.
+      (should (eq (alist-get 'complete data) t))
+      (should (eq (alist-get 'valid effort) :false))
+      (should-not (alist-get 'clocks effort))
+      (should-not (alist-get 'corrections effort))
+      (should (< 0 (length (alist-get 'issues effort)))))))
 
 (ert-deftest lifeos-task-export-work-mode-inherits-project-default ()
   (with-temp-buffer

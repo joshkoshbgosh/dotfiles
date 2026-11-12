@@ -11,6 +11,10 @@
 (require 'cl-lib)
 (require 'json)
 (require 'subr-x)
+;; Reuse the existing append-only effort-drawer parser instead of duplicating
+;; episode/correction attribution in the exporter.
+(require 'lifeos-planning)
+(declare-function my/lifeos-effort-state "lifeos-planning" ())
 (defvar supertag--initialized nil)
 (declare-function supertag-api-query "supertag-api" (query &optional limit))
 (declare-function supertag-api-node "supertag-api" (node-id))
@@ -50,6 +54,63 @@ Empty property values are treated as unset, matching the groomed scaffold."
         own
       (let ((default (org-entry-get nil "DEFAULT_WORK_MODE" t)))
         (and default (not (string-empty-p default)) default)))))
+
+(defun my/lifeos-task-export--effort-evidence ()
+  "Return read-only effort evidence for the task at point.
+The existing `my/lifeos-effort-state' parser owns episode/correction and clock
+attribution. Its clock conversion is machine-local, so the evidence records
+that basis and is not trusted calendar coverage. Record-integrity problems are
+exported as `valid: false' with the issue list; the surrounding task bytes are
+still verified independently."
+  (condition-case err
+      (let* ((state (my/lifeos-effort-state))
+             (valid (and (plist-get state :valid-p) t)))
+        `((valid . ,(if valid t :json-false))
+          (clockZoneBasis . "machine-local")
+          ;; A record-integrity failure withholds every derived fact; the task
+          ;; itself may still be verified, but its effort is unknown.
+          (episodeId . ,(and valid (plist-get state :episode-id)))
+          (episodeStartedAt . ,(and valid (plist-get state :episode-started-at)))
+          (episodes . ,(vconcat
+                        (when valid
+                          (mapcar (lambda (episode)
+                                    `((id . ,(plist-get episode :id))
+                                      (start . ,(plist-get episode :start))))
+                                  (plist-get state :episodes)))))
+          (corrections . ,(vconcat
+                           (when valid
+                             (mapcar (lambda (correction)
+                                       `((correctionId . ,(plist-get correction :correction-id))
+                                         (episodeId . ,(plist-get correction :episode-id))
+                                         (effectiveAt . ,(plist-get correction :effective-at))
+                                         (remainingMinutes . ,(plist-get correction :remaining-minutes))
+                                         (revision . ,(plist-get correction :revision))))
+                                     (plist-get state :corrections)))))
+          (clocks . ,(vconcat
+                      (when valid
+                        (mapcar (lambda (clock)
+                                  `((clockId . ,(plist-get clock :clock-id))
+                                    (episodeId . ,(plist-get clock :episode-id))
+                                    (startedAt . ,(plist-get clock :started-at))
+                                    (endedAt . ,(plist-get clock :ended-at))))
+                                (plist-get state :clocks)))))
+          (issues . ,(vconcat
+                      (mapcar (lambda (issue)
+                                `((code . ,(symbol-name (plist-get issue :code)))
+                                  (detail . ,(plist-get issue :detail))))
+                              (plist-get state :issues))))
+          (provenance . ,(symbol-name (plist-get state :effort-provenance)))))
+    (error
+     `((valid . :json-false)
+       (clockZoneBasis . "machine-local")
+       (episodeId . nil)
+       (episodeStartedAt . nil)
+       (episodes . [])
+       (corrections . [])
+       (clocks . [])
+       (issues . [((code . "effort-state-failed")
+                   (detail . ,(error-message-string err)))])
+       (provenance . "missing")))))
 
 (defconst my/lifeos-task-export-fingerprint-version "v2"
   "Version prefix for `my/lifeos-task-export--fingerprint' output.
@@ -360,7 +421,11 @@ export is diagnostic only; absence never means deletion."
                                               (workMode . ,(my/lifeos-task-export--work-mode))
                                               (waitUntil . ,(org-entry-get nil "WAIT_UNTIL"))
                                               (scheduled . ,(org-entry-get nil "SCHEDULED"))
-                                              (prerequisites . ,(vconcat (my/lifeos-task-export--dependency-targets))))))))
+                                              (prerequisites . ,(vconcat (my/lifeos-task-export--dependency-targets)))
+                                              ;; Correction-anchored effort input is task-only:
+                                              ;; a project deadline never borrows project effort.
+                                              ,@(when (equal kind "task")
+                                                  `((effortState . ,(my/lifeos-task-export--effort-evidence)))))))))
                          nil 'file)
                         (unless (= (or found 0) 1) (error "Missing or duplicate Org ID"))
                         (push record tasks)))
