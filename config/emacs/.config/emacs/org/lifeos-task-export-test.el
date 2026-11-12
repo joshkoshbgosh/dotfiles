@@ -85,6 +85,8 @@
           (output (expand-file-name "snapshot.json" state))
           (rescan-calls 0)
           (supertag--initialized t)
+          ;; The Accepted schedule lives at org-directory/planning.org.
+          (org-directory root)
           (my/lifeos-task-acquisition-output output)
           (my/lifeos-task-acquisition-root root)
           (my/lifeos-task-acquisition-zone "UTC")
@@ -414,6 +416,60 @@ CORRECTION id=c-bad task=id-1 episode=missing effective=2026-10-12T13:00:00Z rem
       (should-not (alist-get 'clocks effort))
       (should-not (alist-get 'corrections effort))
       (should (< 0 (length (alist-get 'issues effort)))))))
+
+(ert-deftest lifeos-task-export-carries-accepted-schedule-blocks ()
+  (lifeos-task-export-test--with-acquisition
+    (let* ((start 30000000)
+           (end (+ start 60))
+           (block (list :id "block-1" :kind 'task :task-id "id-1"
+                        :source-id "id-1" :title "Work" :start start :end end
+                        :minutes 60 :role 'keep))
+           (plan (my/lifeos-schedule-serialize-plan
+                  "plan-1" "source-fp" (- start 60) (+ end 60) start
+                  (list block))))
+      (with-temp-file (expand-file-name "planning.org" root)
+        (insert plan))
+      (my/lifeos-acquire-task-snapshot output root "UTC")
+      (let* ((data (lifeos-task-export-test--read output))
+             (schedule (alist-get 'schedule data))
+             (blocks (alist-get 'blocks schedule)))
+        (should (eq (alist-get 'complete data) t))
+        (should (eq (alist-get 'present schedule) t))
+        (should (eq (alist-get 'valid schedule) t))
+        (should (equal (alist-get 'planId schedule) "plan-1"))
+        (should (equal (alist-get 'sourceFingerprint schedule) "source-fp"))
+        (should (equal (alist-get 'file schedule) "planning.org"))
+        (should (string-match-p "\\`[a-f0-9]\\{64\\}\\'"
+                                (alist-get 'fileHash schedule)))
+        (should (= (length blocks) 1))
+        (should (equal (alist-get 'blockId (car blocks)) "block-1"))
+        (should (equal (alist-get 'taskId (car blocks)) "id-1"))
+        (should (equal (alist-get 'start (car blocks))
+                       (my/lifeos-task-export--instant start)))
+        (should (equal (alist-get 'end (car blocks))
+                       (my/lifeos-task-export--instant end)))))))
+
+(ert-deftest lifeos-task-export-withholds-invalid-schedule-blocks ()
+  (lifeos-task-export-test--with-acquisition
+    (let* ((start 30000000)
+           (end (+ start 60))
+           (block (list :id "block-other" :kind 'task :task-id "not-exported"
+                        :source-id "not-exported" :title "Work" :start start :end end
+                        :minutes 60 :role 'keep))
+           (plan (my/lifeos-schedule-serialize-plan
+                  "plan-1" "source-fp" (- start 60) (+ end 60) start
+                  (list block))))
+      (with-temp-file (expand-file-name "planning.org" root)
+        (insert plan))
+      (my/lifeos-acquire-task-snapshot output root "UTC")
+      (let* ((data (lifeos-task-export-test--read output))
+             (schedule (alist-get 'schedule data)))
+        ;; The task scan remains complete; only the scheduling input is unknown.
+        (should (eq (alist-get 'complete data) t))
+        (should (eq (alist-get 'present schedule) t))
+        (should (eq (alist-get 'valid schedule) :false))
+        (should-not (alist-get 'blocks schedule))
+        (should (< 0 (length (alist-get 'issues schedule))))))))
 
 (ert-deftest lifeos-task-export-work-mode-inherits-project-default ()
   (with-temp-buffer

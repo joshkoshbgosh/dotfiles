@@ -14,6 +14,7 @@
 ;; Reuse the existing append-only effort-drawer parser instead of duplicating
 ;; episode/correction attribution in the exporter.
 (require 'lifeos-planning)
+(require 'lifeos-schedule)
 (declare-function my/lifeos-effort-state "lifeos-planning" ())
 (defvar supertag--initialized nil)
 (declare-function supertag-api-query "supertag-api" (query &optional limit))
@@ -111,6 +112,104 @@ still verified independently."
        (issues . [((code . "effort-state-failed")
                    (detail . ,(error-message-string err)))])
        (provenance . "missing")))))
+
+(defun my/lifeos-task-export--instant (minute)
+  "Format epoch MINUTE as a UTC instant for the coordinator boundary."
+  (format-time-string "%Y-%m-%dT%H:%M:%SZ" (seconds-to-time (* minute 60)) t))
+
+(defun my/lifeos-task-export--schedule-value
+    (present file hash plan-id fingerprint accepted issues &optional blocks)
+  "Return Accepted schedule evidence for the coordinator.
+PRESENT covers the planning file, not merely the Accepted subtree. VALID is
+derived from ISSUES. Blocks are withheld whenever ISSUES is non-empty."
+  `((present . ,(if present t :json-false))
+    (valid . ,(if issues :json-false t))
+    (planId . ,plan-id)
+    (sourceFingerprint . ,fingerprint)
+    (acceptedAt . ,accepted)
+    (file . ,file)
+    (fileHash . ,hash)
+    (issues . ,(vconcat issues))
+    (blocks . ,(vconcat (unless issues blocks)))))
+
+(defun my/lifeos-task-export--schedule-from-buffer (buffer relative file-hash tasks)
+  "Return Accepted schedule evidence parsed from BUFFER.
+RELATIVE and FILE-HASH identify the planning file within the acquisition root.
+TASKS are the verified task entries in the same snapshot."
+  (let* ((plan (my/lifeos-schedule-parse-current-plan buffer))
+         (metadata (plist-get plan :metadata))
+         (plan-id (cdr (assoc "LIFEOS_PLAN_ID" metadata)))
+         (fingerprint (cdr (assoc "LIFEOS_PLAN_SOURCE_FINGERPRINT" metadata)))
+         (accepted-raw (cdr (assoc "LIFEOS_PLAN_ACCEPTED_AT" metadata)))
+         (accepted (and accepted-raw
+                        (format-time-string
+                         "%Y-%m-%dT%H:%M:%SZ" (date-to-time accepted-raw) t))))
+    (cond
+     ((not (plist-get plan :present-p))
+      ;; A planning file with no Accepted subtree is a valid empty plan.
+      (my/lifeos-task-export--schedule-value
+       t relative file-hash nil nil nil nil nil))
+     ((not (plist-get plan :valid-p))
+      (my/lifeos-task-export--schedule-value
+       t relative file-hash plan-id fingerprint accepted
+       (or (plist-get plan :issues) (list "accepted schedule is invalid"))))
+     (t
+      (let* ((task-ids (mapcar (lambda (task) (alist-get 'id task)) tasks))
+             (blocks
+              (cl-loop for block in (plist-get plan :blocks)
+                       when (eq (plist-get block :kind) 'task)
+                       collect `((blockId . ,(plist-get block :id))
+                                 (taskId . ,(plist-get block :task-id))
+                                 (start . ,(my/lifeos-task-export--instant
+                                            (plist-get block :start)))
+                                 (end . ,(my/lifeos-task-export--instant
+                                          (plist-get block :end)))
+                                 (minutes . ,(plist-get block :minutes)))))
+             (unknown (seq-filter
+                       (lambda (block)
+                         (not (member (alist-get 'taskId block) task-ids)))
+                       blocks)))
+        (if unknown
+            (my/lifeos-task-export--schedule-value
+             t relative file-hash plan-id fingerprint accepted
+             (mapcar (lambda (block)
+                       (format "accepted block %s references unknown task %s"
+                               (alist-get 'blockId block)
+                               (alist-get 'taskId block)))
+                     unknown))
+          (my/lifeos-task-export--schedule-value
+           t relative file-hash plan-id fingerprint accepted nil blocks)))))))
+
+(defun my/lifeos-task-export--schedule (root tasks)
+  "Return read-only Accepted schedule evidence for ROOT and exported TASKS.
+The Emacs parser owns plan structure; the coordinator re-verifies FILEHASH and
+block/task references. A planning file without an Accepted subtree is a valid
+empty plan. No file is valid absence. An invalid plan keeps its identity/issues
+but never carries blocks."
+  (let ((file (my/lifeos-schedule--planning-file)))
+    (cond
+     ((not (file-exists-p file))
+      (my/lifeos-task-export--schedule-value nil nil nil nil nil nil nil))
+     ((not (file-in-directory-p (file-truename file) root))
+      (my/lifeos-task-export--schedule-value
+       t nil nil nil nil nil (list "planning file is outside acquisition root")))
+     (t
+      ;; `org-map-entries' only scans a buffer as a file when it has a
+      ;; buffer-file-name. Use a disposable, hook-free buffer and clear the
+      ;; modified flag before killing it so Emacs never offers to save the vault.
+      (let ((buffer (generate-new-buffer " *lifeos-schedule-parse*"))
+            (relative (file-relative-name (file-truename file) root)))
+        (unwind-protect
+            (with-current-buffer buffer
+              (insert-file-contents-literally file)
+              (setq-local buffer-file-name file)
+              (let ((org-mode-hook nil)) (org-mode))
+              (my/lifeos-task-export--schedule-from-buffer
+               buffer relative (secure-hash 'sha256 (current-buffer)) tasks))
+          (when (buffer-live-p buffer)
+            (with-current-buffer buffer
+              (set-buffer-modified-p nil))
+            (kill-buffer buffer))))))))
 
 (defconst my/lifeos-task-export-fingerprint-version "v2"
   "Version prefix for `my/lifeos-task-export--fingerprint' output.
@@ -316,8 +415,8 @@ ZONE must match; an unknown or version 1 snapshot is never reused."
     (tasks . ,(vconcat tasks))
     (issues . ,(vconcat issues))))
 
-(defun my/lifeos-task-export--v2 (receipt zone tasks issues complete)
-  "Return a version 2 acquisition snapshot built from RECEIPT."
+(defun my/lifeos-task-export--v2 (receipt zone tasks issues complete schedule)
+  "Return a version 2 acquisition snapshot built from RECEIPT and SCHEDULE."
   `((version . ,my/lifeos-task-export-snapshot-version)
     (acquisitionId . ,(plist-get receipt :acquisition-id))
     (exportedAt . ,(plist-get receipt :exported-at))
@@ -330,7 +429,8 @@ ZONE must match; an unknown or version 1 snapshot is never reused."
     (fileSetFingerprint . ,(plist-get receipt :file-set-fingerprint))
     (complete . ,(if complete t :json-false))
     (tasks . ,(vconcat tasks))
-    (issues . ,(vconcat issues))))
+    (issues . ,(vconcat issues))
+    (schedule . ,schedule)))
 
 (defun my/lifeos-export-task-snapshot (output root zone &optional receipt)
   "Export verified task IDs from initialized Supertag to OUTPUT.
@@ -462,7 +562,9 @@ export is diagnostic only; absence never means deletion."
       (my/lifeos-task-export--write
        output
        (if receipt
-           (my/lifeos-task-export--v2 receipt zone tasks issues complete)
+           (my/lifeos-task-export--v2
+            receipt zone tasks issues complete
+            (my/lifeos-task-export--schedule root tasks))
          (my/lifeos-task-export--v1 zone tasks issues (and (null issues) t)))))))
 
 (defun my/lifeos-acquire-task-snapshot (output root zone)
