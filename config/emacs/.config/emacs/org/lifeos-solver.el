@@ -132,6 +132,14 @@ When nil, use LIFEOS_COORDINATOR_ROOT, then the parent of
   :type 'string
   :group 'my/lifeos)
 
+(defcustom my/lifeos-scheduling-review-database nil
+  "SQLite database for the read-only live scheduling review.
+When nil, use COORDINATOR_DATABASE, then coordinator.sqlite in the
+lifeos-coordinator checkout.  The review reads this database without
+evaluating or writing attention state."
+  :type '(choice (const :tag "Auto" nil) file)
+  :group 'my/lifeos)
+
 (defun my/lifeos-solver--coordinator-root ()
   "Return the expanded lifeos-coordinator checkout directory."
   (expand-file-name
@@ -154,6 +162,21 @@ When nil, use LIFEOS_COORDINATOR_ROOT, then the parent of
           (expand-file-name my/lifeos-scheduling-review-fixture-relative root)
           "--now" "2026-11-10T10:00:00Z"
           "--window" "2026-11-10T10:00:00Z/2026-11-10T18:00:00Z")))
+
+(defun my/lifeos-scheduling-review--database ()
+  "Return the durable coordinator database path for the live review."
+  (expand-file-name
+   (or my/lifeos-scheduling-review-database
+       (getenv "COORDINATOR_DATABASE")
+       (expand-file-name "coordinator.sqlite" (my/lifeos-solver--coordinator-root)))))
+
+(defun my/lifeos-scheduling-review-live--command ()
+  "Return the command list for the read-only durable-state review."
+  (let ((root (my/lifeos-solver--coordinator-root)))
+    (list my/lifeos-scheduling-review-command
+          "run"
+          (expand-file-name "scripts/scheduling-review-live.ts" root)
+          "--database" (my/lifeos-scheduling-review--database))))
 
 (defvar my/lifeos-solver-process nil)
 (defvar my/lifeos-solver-process-timer nil)
@@ -3565,15 +3588,9 @@ query-free.  FORECAST can pair an already captured heuristic snapshot."
 (defvar my/lifeos-scheduling-review-process nil
   "Current asynchronous scheduling-review process, or nil.")
 
-(defun my/lifeos-scheduling-review-fixture ()
-  "Show the read-only scheduling review for the synthetic fixture.
-
-This runs the coordinator plan checker and both block-granular solver
-scopes.  It reads only the checked-in synthetic fixture and never reads or
-writes live Org.  Its output is explicitly not live evidence."
-  (interactive)
-  (let* ((command (my/lifeos-scheduling-review--command))
-         (executable (car command))
+(defun my/lifeos-scheduling-review--run (command heading)
+  "Run read-only scheduling review COMMAND and show output under HEADING."
+  (let* ((executable (car command))
          (script (nth 2 command))
          (review (get-buffer-create "*LifeOS Scheduling Review*"))
          (output (get-buffer-create " *LifeOS Scheduling Review output*"))
@@ -3592,7 +3609,7 @@ writes live Org.  Its output is explicitly not live evidence."
         (erase-buffer)
         (insert "LifeOS Scheduling Review\n"
                 "========================\n"
-                "SYNTHETIC FIXTURE — NOT LIVE EVIDENCE\n"
+                heading "\n"
                 (format "Running: %s\n\n" (string-join command " ")))))
     (setq my/lifeos-scheduling-review-process
           (make-process
@@ -3628,6 +3645,28 @@ writes live Org.  Its output is explicitly not live evidence."
                    (when (buffer-live-p output) (kill-buffer output))
                    (when (buffer-live-p errors) (kill-buffer errors))))))))
     (pop-to-buffer review)))
+
+(defun my/lifeos-scheduling-review-fixture ()
+  "Show the read-only scheduling review for the synthetic fixture.
+
+This runs the coordinator plan checker and both block-granular solver
+scopes.  It reads only the checked-in synthetic fixture and never reads or
+writes live Org.  Its output is explicitly not live evidence."
+  (interactive)
+  (my/lifeos-scheduling-review--run
+   (my/lifeos-scheduling-review--command)
+   "SYNTHETIC FIXTURE — NOT LIVE EVIDENCE"))
+
+(defun my/lifeos-scheduling-review-live ()
+  "Show the read-only scheduling review for durable coordinator state.
+
+This reads the coordinator SQLite state without evaluating or writing
+alerts, then runs the same plan checker and solver scopes.  It never reads
+or writes Org, and its output is not a live vault acceptance."
+  (interactive)
+  (my/lifeos-scheduling-review--run
+   (my/lifeos-scheduling-review-live--command)
+   "DURABLE COORDINATOR STATE — READ-ONLY, NOT LIVE ACCEPTANCE"))
 
 (defun my/lifeos-solver--read-minute (prompt default-minute)
   "Read a local date/time with PROMPT, defaulting to DEFAULT-MINUTE."

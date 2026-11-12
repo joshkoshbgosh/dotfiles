@@ -500,5 +500,31 @@
     (should (equal (my/lifeos-solver--coordinator-root)
                    "/tmp/lifeos-coordinator/"))))
 
+(ert-deftest my/lifeos-scheduling-review-live-command-targets-durable-state ()
+  (let ((my/lifeos-coordinator-root "/tmp/lifeos-coordinator")
+        (my/lifeos-scheduling-review-command "bun")
+        (my/lifeos-scheduling-review-database "/tmp/state.sqlite"))
+    (should (equal
+             (my/lifeos-scheduling-review-live--command)
+             '("bun" "run"
+               "/tmp/lifeos-coordinator/scripts/scheduling-review-live.ts"
+               "--database" "/tmp/state.sqlite"))))
+  (let ((my/lifeos-coordinator-root "/tmp/lifeos-coordinator")
+        (my/lifeos-scheduling-review-database nil)
+        (my/lifeos-solver-root "/tmp/lifeos-coordinator/solver"))
+    (cl-letf (((symbol-function 'getenv)
+               (lambda (name)
+                 (if (equal name "COORDINATOR_DATABASE")
+                     "/tmp/env.sqlite"
+                   nil))))
+      (should (equal (my/lifeos-scheduling-review--database)
+                     "/tmp/env.sqlite"))))
+  (let ((my/lifeos-coordinator-root "/tmp/lifeos-coordinator")
+        (my/lifeos-scheduling-review-database nil)
+        (my/lifeos-solver-root "/tmp/lifeos-coordinator/solver"))
+    (cl-letf (((symbol-function 'getenv) (lambda (_name) nil)))
+      (should (equal (my/lifeos-scheduling-review--database)
+                     "/tmp/lifeos-coordinator/coordinator.sqlite")))))
+
 (provide 'lifeos-schedule-test)
 ;;; lifeos-schedule-test.el ends here
