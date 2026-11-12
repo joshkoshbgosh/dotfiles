@@ -15,8 +15,14 @@
 ;; Mode-local `C-c ...' bindings still win inside their own buffers, which is
 ;; exactly why `C-c' is the right prefix for personal keys.
 ;;
-;; Terminals (vterm, eat, ghostel) send `C-c' to the shell, so these keys do
-;; not reach Emacs there; use `M-x' inside a terminal buffer.
+;; Terminals already treat `C-c' as an Emacs prefix and give the rest of the
+;; chord to Emacs, so the table below works inside vterm, eat and ghostel too:
+;; each keeps `C-c C-c' for the shell (SIGINT) and only claims uppercase
+;; `C-c C-x'/`C-c M-x' continuations, none of which collide with the
+;; single-key bindings here.  More precisely, a terminal's `C-c' prefix map
+;; only shadows the exact keys it binds; anything else falls through to
+;; `global-map', which is why `C-c f' opens a file from inside a shell buffer
+;; while `C-c C-c' still interrupts the running process.
 
 ;; --- files and buffers ---
 (keymap-set global-map "C-c f" #'my/find-file-prompt)

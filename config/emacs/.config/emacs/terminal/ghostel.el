@@ -1,6 +1,11 @@
 ;; -*- lexical-binding: t -*-
 ;;; terminal/ghostel.el — Ghostel integration
 
+;; ghostel already routes `C-c' through Emacs (`ghostel-keymap-exceptions') and
+;; binds the comint conventions itself: `C-c C-c' is `ghostel-send-C-c'
+;; (interrupt), `C-c C-z' suspend, `C-c C-d' EOF, `C-c C-t' copy mode.  Unused
+;; `C-c' continuations fall through to keys/global.el.
+
 (use-package ghostel
   :straight (ghostel :host github :repo "dakra/ghostel")
   :commands ghostel
@@ -9,4 +14,3 @@
   (with-eval-after-load 'evil
     (evil-set-initial-state 'ghostel-mode 'emacs)
     (add-hook 'ghostel-mode-hook #'evil-emacs-state)))
-

@@ -1,8 +1,10 @@
 ;; -*- lexical-binding: t -*-
 ;;; terminal/vterm.el — Vterm configuration
 
-;; `C-c' is sent to the shell inside vterm, so the personal `C-c' bindings in
-;; keys/global.el are not reachable here; use `M-x' in a terminal buffer.
+;; vterm keeps `C-c' out of its keymap on purpose
+;; (`vterm-keymap-exceptions'), so `C-c' is an Emacs prefix inside a vterm
+;; buffer: `C-c C-c' stays `vterm--self-insert' (which sends 0x03, SIGINT)
+;; and everything else falls through to the table in keys/global.el.
 
 (use-package vterm
   :commands vterm
