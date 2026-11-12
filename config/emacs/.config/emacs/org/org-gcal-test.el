@@ -308,9 +308,11 @@
       (delete-file file)
       (delete-file (concat file ".sync-receipt.json")))))
 
-(ert-deftest my/org-gcal-trusted-refresh-writes-trusted-v3-receipt ()
+(ert-deftest my/org-gcal-trusted-refresh-writes-trusted-v4-receipt ()
   (let* ((file (make-temp-file "lifeos-trusted-gcal-" nil ".org" "* Event\n"))
+         (generation-file (concat file ".generation.json"))
          (my/org-gcal-calendar-file file)
+         (my/org-gcal-trusted-generation-file generation-file)
          (org-gcal-fetch-file-alist (list (cons "cal-1" file)))
          (org-gcal-up-days 7)
          (org-gcal-down-days 60)
@@ -342,9 +344,10 @@
           (should-not my/org-gcal--trusted-fetch-errors)
           (let* ((json-object-type 'plist)
                  (receipt (json-read-file (concat file ".sync-receipt.json"))))
-            (should (= (plist-get receipt :version) 3))
+            (should (= (plist-get receipt :version) 4))
             (should (equal (plist-get receipt :availability) "trusted"))
             (should (equal (plist-get receipt :producer) "lifeos-org-gcal"))
+            (should (= (plist-get receipt :generation) 1))
             (should (equal (plist-get receipt :mode) "full"))
             (should (equal (plist-get receipt :pagination) "complete"))
             (should (equal (plist-get receipt :recurrence) "complete"))
@@ -366,6 +369,66 @@
         (kill-buffer buffer))
       (when (file-exists-p (concat file ".sync-receipt.json"))
         (delete-file (concat file ".sync-receipt.json")))
+      (when (file-exists-p generation-file)
+        (delete-file generation-file))
+      (delete-file file))))
+
+(ert-deftest my/org-gcal-trusted-generation-is-durable-and-monotonic ()
+  (let* ((file (make-temp-file "lifeos-gcal-generation-" nil ".json"))
+         (my/org-gcal-trusted-generation-file file))
+    (unwind-protect
+        (progn
+          (delete-file file)
+          (should (= (my/org-gcal--next-trusted-generation) 1))
+          (should (= (my/org-gcal--next-trusted-generation) 2))
+          ;; A corrupt, foreign or non-positive state must fail closed rather
+          ;; than mint another trusted generation.
+          (with-temp-file file (insert "not json"))
+          (should-not (my/org-gcal--next-trusted-generation))
+          (with-temp-file file
+            (insert "{\"version\":1,\"producer\":\"other\",\"generation\":9}"))
+          (should-not (my/org-gcal--next-trusted-generation))
+          (with-temp-file file
+            (insert "{\"version\":1,\"producer\":\"lifeos-org-gcal\",\"generation\":0}"))
+          (should-not (my/org-gcal--next-trusted-generation))
+          (with-temp-file file
+            (insert "{\"version\":1,\"producer\":\"lifeos-org-gcal\",\"generation\":41}"))
+          (should (= (my/org-gcal--next-trusted-generation) 42)))
+      (when (file-exists-p file) (delete-file file)))))
+
+(ert-deftest my/org-gcal-corrupt-generation-downgrades-trusted-receipt ()
+  (let* ((file (make-temp-file "lifeos-gcal-bad-generation-" nil ".org" "* Event\n"))
+         (generation-file (concat file ".generation.json"))
+         (my/org-gcal-calendar-file file)
+         (my/org-gcal-trusted-generation-file generation-file)
+         (my/org-gcal-trusted-freshness-seconds 1800)
+         (my/org-gcal-last-successful-fetch-time nil)
+         (my/org-gcal-calendar-coverage-end nil)
+         (now (date-to-time "2026-11-08T10:00:00Z")))
+    (unwind-protect
+        (progn
+          (with-temp-file generation-file (insert "not json"))
+          (my/org-gcal--record-successful-fetch
+           now
+           (list :mode "full"
+                 :pagination "complete"
+                 :recurrence "complete"
+                 :calendars '("cal-1")
+                 :requested-start "2026-11-01T10:00:00Z"
+                 :requested-end "2027-01-07T10:00:00Z"))
+          (let* ((json-object-type 'plist)
+                 (receipt (json-read-file (concat file ".sync-receipt.json"))))
+            (should (= (plist-get receipt :version) 2))
+            (should (equal (plist-get receipt :availability) "unverified"))
+            (should-not (plist-get receipt :generation))
+            (should-not my/org-gcal-calendar-coverage-end)))
+      (when-let* ((buffer (get-file-buffer file)))
+        (set-buffer-modified-p nil)
+        (kill-buffer buffer))
+      (when (file-exists-p (concat file ".sync-receipt.json"))
+        (delete-file (concat file ".sync-receipt.json")))
+      (when (file-exists-p generation-file)
+        (delete-file generation-file))
       (delete-file file))))
 
 (ert-deftest my/org-gcal-trusted-refresh-downgrades-on-swallowed-entry-error ()

@@ -64,6 +64,59 @@ again before expiry to keep calculated pressure verified."
   :type 'integer
   :group 'org)
 
+(defcustom my/org-gcal-trusted-generation-file
+  (expand-file-name "emacs/org-gcal-trusted-generation.json"
+                    (or (getenv "XDG_STATE_HOME") "~/.local/state"))
+  "Durable producer generation for trusted full-refresh receipts.
+The coordinator orders receipts per calendar source by this positive integer,
+not by wall-clock fetch instants, so a receipt file rolled back across a restart
+cannot become current again. The counter is persisted outside the vault and the
+dotfiles repository. A corrupt or reset state file fails closed: no trusted
+receipt is written until it is repaired or a future explicit reset protocol is
+approved."
+  :type 'file
+  :group 'org)
+
+(defun my/org-gcal--next-trusted-generation ()
+  "Return the next durable trusted-receipt generation, or nil.
+The previous generation is read from `my/org-gcal-trusted-generation-file' and
+the incremented value is persisted atomically before the receipt is written.
+An absent state file starts at 1. A corrupt, foreign or non-positive state file
+returns nil so the caller downgrades to an unverified receipt instead of
+inventing an ordering claim."
+  (condition-case nil
+      (let* ((file my/org-gcal-trusted-generation-file)
+             (previous
+              (if (not (file-exists-p file))
+                  0
+                (with-temp-buffer
+                  (insert-file-contents file)
+                  (let ((document (json-parse-buffer :object-type 'plist)))
+                    (when (and (equal (plist-get document :version) 1)
+                               (equal (plist-get document :producer) "lifeos-org-gcal")
+                               (integerp (plist-get document :generation))
+                               (> (plist-get document :generation) 0)
+                               (<= (plist-get document :generation) most-positive-fixnum))
+                      (plist-get document :generation)))))))
+        (when (and previous (< previous most-positive-fixnum))
+          (let ((generation (1+ previous))
+                (directory (file-name-directory file))
+                temp-file)
+            (make-directory directory t)
+            (setq temp-file (make-temp-file (concat file ".") nil ".tmp"))
+            (unwind-protect
+                (progn
+                  (with-temp-file temp-file
+                    (insert (json-encode
+                             `((version . 1)
+                               (producer . "lifeos-org-gcal")
+                               (generation . ,generation)))))
+                  (set-file-modes temp-file #o600)
+                  (rename-file temp-file file t)
+                  generation)
+              (when (file-exists-p temp-file) (delete-file temp-file))))))
+    (error nil)))
+
 (defvar org-gcal-down-days 60
   "Future days requested from org-gcal; declared here for pre-load fetch evidence.")
 
@@ -243,15 +296,20 @@ existing version 2 unverified receipt; org-gcal can swallow individual entry
 errors and incremental sync does not certify recurrence completeness."
   (let* ((fetched-at (or fetched-at (current-time)))
          (fetched-iso (format-time-string "%Y-%m-%dT%H:%M:%SZ" fetched-at t))
-         (trust (and trust
-                     (equal (plist-get trust :mode) "full")
-                     (equal (plist-get trust :pagination) "complete")
-                     (equal (plist-get trust :recurrence) "complete")
-                     (null (plist-get trust :errors))
-                     (consp (plist-get trust :calendars))
-                     (stringp (plist-get trust :requested-start))
-                     (stringp (plist-get trust :requested-end))
-                     trust))
+         (valid-trust (and trust
+                           (equal (plist-get trust :mode) "full")
+                           (equal (plist-get trust :pagination) "complete")
+                           (equal (plist-get trust :recurrence) "complete")
+                           (null (plist-get trust :errors))
+                           (consp (plist-get trust :calendars))
+                           (stringp (plist-get trust :requested-start))
+                           (stringp (plist-get trust :requested-end))
+                           trust))
+         ;; Persist the ordering claim before writing the receipt. If the
+         ;; generation cannot be allocated, downgrade to the unverified shape
+         ;; rather than reuse or invent a generation.
+         (generation (and valid-trust (my/org-gcal--next-trusted-generation)))
+         (trust (and generation valid-trust))
          (expires-at (and trust
                           (format-time-string
                            "%Y-%m-%dT%H:%M:%SZ"
@@ -272,12 +330,13 @@ errors and incremental sync does not certify recurrence completeness."
             (with-temp-file temp-file
               (insert (json-encode
                        (if trust
-                           `((version . 3)
+                           `((version . 4)
                              (availability . "trusted")
                              (producer . "lifeos-org-gcal")
                              (mode . ,(plist-get trust :mode))
                              (pagination . ,(plist-get trust :pagination))
                              (recurrence . ,(plist-get trust :recurrence))
+                             (generation . ,generation)
                              (sha256 . ,sha256)
                              (fetchedAt . ,fetched-iso)
                              (expiresAt . ,expires-at)
