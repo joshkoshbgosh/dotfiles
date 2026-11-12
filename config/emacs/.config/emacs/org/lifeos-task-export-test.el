@@ -56,6 +56,9 @@
 (defconst lifeos-task-export-test--tag-id
   "f2d7075f-d8a8-45c0-9e44-40270fb9e99d")
 
+(defconst lifeos-task-export-test--project-tag-id
+  "1988054a-d048-49ce-bd20-4eb4f9a6f458")
+
 (defun lifeos-task-export-test--source (&optional effort)
   "Return an Org task source with a stable ID and EFFORT."
   (format "* TODO Prepare report #task\n:PROPERTIES:\n:ID: id-1\n:END:\nDEADLINE: <2026-11-12 Thu>\nEFFORT: %s\n"
@@ -120,13 +123,43 @@
       (should (equal (alist-get 'scanStatus data) "complete"))
       (should (equal (alist-get 'filesDiscovered data) 1))
       (should (equal (alist-get 'filesProcessed data) 1))
-      (should (string-prefix-p "v1:" (alist-get 'fileSetFingerprint data)))
+      (should (string-prefix-p "v2:" (alist-get 'fileSetFingerprint data)))
       (should (equal (length (alist-get 'tasks data)) 1))
       (should (equal (alist-get 'id (car (alist-get 'tasks data))) "id-1"))
       (should (equal (alist-get 'membership
                                 (car (alist-get 'tasks data)))
                      '((tagId . "f2d7075f-d8a8-45c0-9e44-40270fb9e99d")
                        (via . "supertag-api-query/node")))))))
+
+(ert-deftest lifeos-task-export-includes-deadline-project-as-evidence ()
+  (lifeos-task-export-test--with-acquisition
+    (let* ((project-file (expand-file-name "projects.org" root))
+           (project-text "* Essay 2 #project\nDEADLINE: <2026-11-25 Wed>\n:PROPERTIES:\n:ID: project-1\n:END:\n"))
+      (with-temp-file project-file (insert project-text))
+      (cl-letf (((symbol-function 'supertag-api-query)
+                 (lambda (&rest _)
+                   '(:truncated nil :count 2 :nodes ((:id "id-1") (:id "project-1")))))
+                ((symbol-function 'supertag-api-node)
+                 (lambda (id)
+                   (if (equal id "project-1")
+                       (list :id id :title "Essay 2" :file project-file
+                             :properties nil
+                             :tags (list (list :id lifeos-task-export-test--project-tag-id
+                                               :name "project")))
+                     (list :id id :title "Prepare report" :file source
+                           :properties '(:EFFORT "0:30")
+                           :tags (list (list :id lifeos-task-export-test--tag-id
+                                             :name "task")))))))
+        (my/lifeos-acquire-task-snapshot output root "UTC")))
+    (let* ((data (lifeos-task-export-test--read output))
+           (tasks (alist-get 'tasks data))
+           (project (cl-find-if (lambda (task) (equal (alist-get 'id task) "project-1")) tasks)))
+      (should (eq (alist-get 'complete data) t))
+      (should project)
+      (should (equal (alist-get 'kind project) "project"))
+      (should (equal (alist-get 'tagId (alist-get 'membership project))
+                     lifeos-task-export-test--project-tag-id))
+      (should (eq (alist-get 'effort project) :null)))))
 
 (ert-deftest lifeos-task-export-acquisition-reuses-unchanged-rescan ()
   (lifeos-task-export-test--with-acquisition

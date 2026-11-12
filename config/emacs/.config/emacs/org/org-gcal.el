@@ -25,35 +25,65 @@
 (defvar my/org-gcal-fetch-in-progress nil
   "Non-nil while a Google Calendar import is running.")
 
-<<<<<<< HEAD
 (defvar my/org-gcal-configured-p nil
   "Non-nil after org-gcal authentication settings are loaded this session.")
+
+(defvar org-gcal-fetch-file-alist nil
+  "Calendar ID to Org file mapping configured by `my/org-gcal-configure'.")
 
 (defvar my/org-gcal-last-poll-error nil
   "Most recent background calendar polling error, or nil.")
 
-=======
->>>>>>> c638f20 (update)
 (defvar my/org-gcal-last-successful-fetch-time nil
   "Time of the latest org-gcal fetch that completed successfully.")
 
 (defvar my/org-gcal-calendar-coverage-end nil
   "Verified exclusive coverage end; nil until recurrence completeness is proven.")
 
+;; Trusted full-refresh receipt state. A full refresh clears incremental sync
+;; tokens and waits for every calendar/page/instance fetch. Per-entry failures
+;; are swallowed by org-gcal's deferred handlers and only logged, so capture
+;; those messages while a trusted refresh is active. Any captured error
+;; downgrades the receipt to the existing unverified format.
+(defvar my/org-gcal--trusted-fetch-active nil
+  "Non-nil while a trusted full refresh is in progress.")
+
+(defvar my/org-gcal--trusted-fetch-errors nil
+  "Per-entry errors captured during a trusted full refresh.")
+
+(defvar my/org-gcal--trusted-requested-start nil
+  "ISO start of the window requested by the active trusted refresh.")
+
+(defvar my/org-gcal--trusted-requested-end nil
+  "ISO end of the window requested by the active trusted refresh.")
+
+(defcustom my/org-gcal-trusted-freshness-seconds 1800
+  "How long a trusted full-refresh receipt remains usable.
+The coordinator rejects a receipt at or after this age; a full refresh must run
+again before expiry to keep calculated pressure verified."
+  :type 'integer
+  :group 'org)
+
 (defvar org-gcal-down-days 60
   "Future days requested from org-gcal; declared here for pre-load fetch evidence.")
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
 (defvar org-gcal-up-days 7
   "Past days requested from org-gcal; declared here for pre-load fetch evidence.")
 
->>>>>>> fb56d00 (Record org-gcal fetch evidence without claiming coverage)
+(defun my/org-gcal--capture-sync-error-message (function format &rest args)
+  "Record swallowed org-gcal sync errors while a trusted fetch is active.
+FORMAT and ARGS are passed through to FUNCTION unchanged."
+  (when (and my/org-gcal--trusted-fetch-active
+             (stringp format)
+             (string-match-p "\\`org-gcal-\\(?:sync\\|sync-buffer\\): error:" format))
+    (push (apply #'format format args) my/org-gcal--trusted-fetch-errors))
+  (apply function format args))
+
+(unless (advice-member-p #'my/org-gcal--capture-sync-error-message 'message)
+  (advice-add 'message :around #'my/org-gcal--capture-sync-error-message))
+
 (setq plstore-cache-passphrase-for-symmetric-encryption t)
 
-=======
->>>>>>> c638f20 (update)
 (setq org-gcal-remove-api-cancelled-events t
       org-gcal-remove-events-with-cancelled-todo t)
 
@@ -111,10 +141,7 @@ dotfiles repository."
     (setq org-gcal-client-id client-id
           org-gcal-client-secret client-secret
           my/org-gcal-calendar-role-alist calendars
-<<<<<<< HEAD
           my/org-gcal-configured-p nil
-=======
->>>>>>> c638f20 (update)
           org-gcal-fetch-file-alist
           (mapcar (lambda (entry)
                     (cons (car entry) my/org-gcal-calendar-file))
@@ -188,31 +215,54 @@ dotfiles repository."
 
 (defun my/org-gcal--prepare-package ()
   "Configure and load org-gcal with current OAuth credentials."
-<<<<<<< HEAD
   (unless my/org-gcal-configured-p
     (my/org-gcal-configure)
     (require 'org-gcal)
     (when (fboundp 'org-gcal-reload-client-id-secret)
       (org-gcal-reload-client-id-secret))
     (setq my/org-gcal-configured-p t)))
-=======
-  (my/org-gcal-configure)
-  (require 'org-gcal)
-  (when (fboundp 'org-gcal-reload-client-id-secret)
-    (org-gcal-reload-client-id-secret)))
->>>>>>> c638f20 (update)
 
-(defun my/org-gcal--record-successful-fetch (&optional fetched-at)
-  "Record FETCHED-AT and requested window, NOT verified availability coverage.
+(defun my/org-gcal--trusted-receipt ()
+  "Return trusted receipt fields when the active full refresh is clean."
+  (when (and my/org-gcal--trusted-fetch-active
+             (null my/org-gcal--trusted-fetch-errors)
+             (stringp my/org-gcal--trusted-requested-start)
+             (stringp my/org-gcal--trusted-requested-end)
+             (consp org-gcal-fetch-file-alist))
+    (list :mode "full"
+          :pagination "complete"
+          :recurrence "complete"
+          :calendars (mapcar #'car org-gcal-fetch-file-alist)
+          :requested-start my/org-gcal--trusted-requested-start
+          :requested-end my/org-gcal--trusted-requested-end)))
 
-org-gcal may swallow individual entry errors, and incremental sync does not
-certify complete recurrence instances.  This receipt is untrusted for free time."
-  (let ((fetched-at (or fetched-at (current-time))))
+(defun my/org-gcal--record-successful-fetch (&optional fetched-at trust)
+  "Record FETCHED-AT and requested window for the saved calendar.
+TRUST, when non-nil, is a clean full-refresh receipt. Without it this writes the
+existing version 2 unverified receipt; org-gcal can swallow individual entry
+errors and incremental sync does not certify recurrence completeness."
+  (let* ((fetched-at (or fetched-at (current-time)))
+         (fetched-iso (format-time-string "%Y-%m-%dT%H:%M:%SZ" fetched-at t))
+         (trust (and trust
+                     (equal (plist-get trust :mode) "full")
+                     (equal (plist-get trust :pagination) "complete")
+                     (equal (plist-get trust :recurrence) "complete")
+                     (null (plist-get trust :errors))
+                     (consp (plist-get trust :calendars))
+                     (stringp (plist-get trust :requested-start))
+                     (stringp (plist-get trust :requested-end))
+                     trust))
+         (expires-at (and trust
+                          (format-time-string
+                           "%Y-%m-%dT%H:%M:%SZ"
+                           (time-add fetched-at
+                                     (seconds-to-time my/org-gcal-trusted-freshness-seconds))
+                           t))))
     (let* ((receipt-file (concat my/org-gcal-calendar-file ".sync-receipt.json"))
-      (temp-file (make-temp-file (concat receipt-file ".") nil ".tmp"))
-      (sha256 (with-temp-buffer
-                (insert-file-contents-literally my/org-gcal-calendar-file)
-                (secure-hash 'sha256 (current-buffer)))))
+           (temp-file (make-temp-file (concat receipt-file ".") nil ".tmp"))
+           (sha256 (with-temp-buffer
+                     (insert-file-contents-literally my/org-gcal-calendar-file)
+                     (secure-hash 'sha256 (current-buffer)))))
       (unwind-protect
           (progn
             (with-current-buffer (find-file-noselect my/org-gcal-calendar-file)
@@ -221,19 +271,35 @@ certify complete recurrence instances.  This receipt is untrusted for free time.
                 (error "Saved calendar differs from fetched/normalized buffer")))
             (with-temp-file temp-file
               (insert (json-encode
-                       `((version . 2)
-                         (availability . "unverified")
-                         (sha256 . ,sha256)
-                         (fetchedAt . ,(format-time-string "%Y-%m-%dT%H:%M:%SZ" fetched-at t))
-                         (requestedStart . ,(format-time-string "%Y-%m-%dT%H:%M:%SZ"
-                                                               (time-subtract fetched-at (days-to-time org-gcal-up-days)) t))
-                         (requestedEnd . ,(format-time-string "%Y-%m-%dT%H:%M:%SZ"
-                                                             (time-add fetched-at (days-to-time org-gcal-down-days)) t))))))
+                       (if trust
+                           `((version . 3)
+                             (availability . "trusted")
+                             (producer . "lifeos-org-gcal")
+                             (mode . ,(plist-get trust :mode))
+                             (pagination . ,(plist-get trust :pagination))
+                             (recurrence . ,(plist-get trust :recurrence))
+                             (sha256 . ,sha256)
+                             (fetchedAt . ,fetched-iso)
+                             (expiresAt . ,expires-at)
+                             (requestedStart . ,(plist-get trust :requested-start))
+                             (requestedEnd . ,(plist-get trust :requested-end))
+                             (calendars . ,(vconcat (plist-get trust :calendars)))
+                             (chunksRetrieved . ,(length (plist-get trust :calendars)))
+                             (errors . []))
+                         `((version . 2)
+                           (availability . "unverified")
+                           (sha256 . ,sha256)
+                           (fetchedAt . ,fetched-iso)
+                           (requestedStart . ,(format-time-string "%Y-%m-%dT%H:%M:%SZ"
+                                                                 (time-subtract fetched-at (days-to-time org-gcal-up-days)) t))
+                           (requestedEnd . ,(format-time-string "%Y-%m-%dT%H:%M:%SZ"
+                                                               (time-add fetched-at (days-to-time org-gcal-down-days)) t)))))))
             (set-file-modes temp-file #o600)
             (rename-file temp-file receipt-file t))
         (when (file-exists-p temp-file) (delete-file temp-file))))
     (setq my/org-gcal-last-successful-fetch-time fetched-at
-          my/org-gcal-calendar-coverage-end nil)))
+          my/org-gcal-calendar-coverage-end
+          (and trust (plist-get trust :requested-end)))))
 
 (defun my/org-gcal-fetch ()
   "Fetch Google Calendar events without pushing local changes."
@@ -255,11 +321,9 @@ certify complete recurrence instances.  This receipt is untrusted for free time.
                         (with-current-buffer
                             (find-file-noselect my/org-gcal-calendar-file)
                           (save-buffer))
-                        (my/org-gcal--record-successful-fetch)
-<<<<<<< HEAD
+                        (my/org-gcal--record-successful-fetch
+                         nil (my/org-gcal--trusted-receipt))
                         (setq my/org-gcal-last-poll-error nil)
-=======
->>>>>>> c638f20 (update)
                         (when (fboundp 'my/lifeos-invalidate-project-analysis)
                           (my/lifeos-invalidate-project-analysis))
                         result)))
@@ -267,7 +331,11 @@ certify complete recurrence instances.  This receipt is untrusted for free time.
                     (deferred:watch
                      success
                      (lambda (_)
-                       (setq my/org-gcal-fetch-in-progress nil)))))
+                       (setq my/org-gcal-fetch-in-progress nil
+                             my/org-gcal--trusted-fetch-active nil
+                             my/org-gcal--trusted-fetch-errors nil
+                             my/org-gcal--trusted-requested-start nil
+                             my/org-gcal--trusted-requested-end nil)))))
               watched)
           (error
            (setq my/org-gcal-fetch-in-progress nil)
@@ -282,7 +350,35 @@ certify complete recurrence instances.  This receipt is untrusted for free time.
   (org-gcal-sync-tokens-clear)
   (my/org-gcal-fetch))
 
-<<<<<<< HEAD
+(defun my/org-gcal-trusted-refresh ()
+  "Run a full refresh and write a trusted receipt only when it is clean.
+Clears incremental sync tokens, requests the configured past/future window,
+and waits for every calendar/page/recurrence fetch. Per-entry errors logged by
+org-gcal are captured and downgrade the receipt to the unverified version 2
+format. The receipt expires after `my/org-gcal-trusted-freshness-seconds`."
+  (interactive)
+  (when my/org-gcal-fetch-in-progress
+    (user-error "Google Calendar fetch already in progress"))
+  (my/org-gcal--prepare-package)
+  (when (and (boundp 'org-gcal--sync-lock) org-gcal--sync-lock)
+    (user-error "Google Calendar sync is locked; resolve it before a trusted refresh"))
+  (setq my/org-gcal--trusted-fetch-active t
+        my/org-gcal--trusted-fetch-errors nil
+        my/org-gcal--trusted-requested-start
+        (format-time-string "%Y-%m-%dT%H:%M:%SZ"
+                            (time-subtract (current-time) (days-to-time org-gcal-up-days)) t)
+        my/org-gcal--trusted-requested-end
+        (format-time-string "%Y-%m-%dT%H:%M:%SZ"
+                            (time-add (current-time) (days-to-time org-gcal-down-days)) t))
+  (org-gcal-sync-tokens-clear)
+  (let ((result (my/org-gcal-fetch)))
+    (when (eq result :already-running)
+      (setq my/org-gcal--trusted-fetch-active nil
+            my/org-gcal--trusted-fetch-errors nil
+            my/org-gcal--trusted-requested-start nil
+            my/org-gcal--trusted-requested-end nil))
+    result))
+
 (define-error 'my/org-gcal-authentication-required
   "Google Calendar authentication requires an explicit fetch" 'user-error)
 
@@ -306,19 +402,53 @@ certify complete recurrence instances.  This receipt is untrusted for free time.
 
 (defun my/org-gcal-start-polling ()
   "Poll every fifteen minutes after one explicit successful fetch."
-=======
-(defun my/org-gcal-start-polling ()
-  "Start one fetch shortly after startup and every fifteen minutes."
->>>>>>> c638f20 (update)
   (interactive)
   (when (timerp my/org-gcal-fetch-timer)
     (cancel-timer my/org-gcal-fetch-timer))
   (setq my/org-gcal-fetch-timer
-<<<<<<< HEAD
         (run-at-time (* 15 60) (* 15 60) #'my/org-gcal--poll)))
-=======
-        (run-at-time 5 (* 15 60) #'my/org-gcal-fetch)))
->>>>>>> c638f20 (update)
+
+(defvar my/org-gcal-trusted-refresh-timer nil
+  "Timer for periodic trusted full refreshes, or nil when stopped.")
+
+(defcustom my/org-gcal-trusted-refresh-interval 1200
+  "Seconds between trusted full refreshes.
+Keep this below `my/org-gcal-trusted-freshness-seconds` so the coordinator
+always has a usable receipt. The timer is opt-in; start it explicitly."
+  :type 'integer
+  :group 'org)
+
+(defun my/org-gcal--trusted-poll ()
+  "Run a trusted full refresh without allowing an interactive auth prompt."
+  (if (not my/org-gcal-last-successful-fetch-time)
+      :authentication-required
+    (let ((browse-url-browser-function #'my/org-gcal--reject-background-auth))
+      (condition-case error-data
+          (my/org-gcal-trusted-refresh)
+        (my/org-gcal-authentication-required
+         (setq my/org-gcal-last-poll-error 'authentication-required)
+         :authentication-required)
+        (error
+         (setq my/org-gcal-last-poll-error (error-message-string error-data))
+         :failed)))))
+
+(defun my/org-gcal-start-trusted-refresh ()
+  "Start periodic trusted full refreshes after one explicit fetch."
+  (interactive)
+  (unless (and (numberp my/org-gcal-trusted-refresh-interval)
+               (> my/org-gcal-trusted-refresh-interval 0))
+    (user-error "my/org-gcal-trusted-refresh-interval must be a positive number"))
+  (when (timerp my/org-gcal-trusted-refresh-timer)
+    (cancel-timer my/org-gcal-trusted-refresh-timer))
+  (setq my/org-gcal-trusted-refresh-timer
+        (run-at-time 60 my/org-gcal-trusted-refresh-interval #'my/org-gcal--trusted-poll)))
+
+(defun my/org-gcal-stop-trusted-refresh ()
+  "Stop periodic trusted full refreshes."
+  (interactive)
+  (when (timerp my/org-gcal-trusted-refresh-timer)
+    (cancel-timer my/org-gcal-trusted-refresh-timer))
+  (setq my/org-gcal-trusted-refresh-timer nil))
 
 (use-package org-gcal
   :straight t

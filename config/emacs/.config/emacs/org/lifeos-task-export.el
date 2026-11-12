@@ -18,6 +18,9 @@
 (declare-function supertag-scan-sync-directories "supertag-services-sync" (&optional all-files-p))
 (declare-function supertag-sync-full-rescan "supertag-services-sync" ())
 (defconst my/lifeos-task-export-tag-id "f2d7075f-d8a8-45c0-9e44-40270fb9e99d")
+(defconst my/lifeos-task-export-project-tag-id "1988054a-d048-49ce-bd20-4eb4f9a6f458"
+  "Stable `#project` tag id. Deadline-bearing projects are deadline evidence,
+even though they are not task demand and carry no effort.")
 
 (defun my/lifeos-task-export--dependency-targets ()
   "Return depends-on target IDs from the current heading's own body.
@@ -48,8 +51,10 @@ Empty property values are treated as unset, matching the groomed scaffold."
       (let ((default (org-entry-get nil "DEFAULT_WORK_MODE" t)))
         (and default (not (string-empty-p default)) default)))))
 
-(defconst my/lifeos-task-export-fingerprint-version "v1"
-  "Version prefix for `my/lifeos-task-export--fingerprint' output.")
+(defconst my/lifeos-task-export-fingerprint-version "v2"
+  "Version prefix for `my/lifeos-task-export--fingerprint' output.
+Bumped when the exported semantic query changes so an older task-only
+snapshot is rescanned instead of reused.")
 (defconst my/lifeos-task-export-snapshot-version 2
   "Version of the trusted snapshot envelope produced with a receipt.")
 
@@ -279,7 +284,7 @@ export is diagnostic only; absence never means deletion."
          (seen (make-hash-table :test 'equal))
          (tasks nil)
          (issues nil)
-         (result (supertag-api-query '(tag "task"))))
+         (result (supertag-api-query '(or (tag "task") (tag "project")))))
     (when (file-in-directory-p output root)
       (error "Snapshot must be outside LifeOS"))
     (when (plist-get result :truncated)
@@ -287,20 +292,21 @@ export is diagnostic only; absence never means deletion."
     (dolist (summary (plist-get result :nodes))
       (let* ((id (plist-get summary :id))
              (node (and id (condition-case nil (supertag-api-node id) (error nil))))
-             (file (and node (plist-get node :file))))
+             (file (and node (plist-get node :file)))
+             (tags (and node (plist-get node :tags)))
+             (kind (cond
+                    ((cl-find my/lifeos-task-export-tag-id tags
+                              :key (lambda (tag) (plist-get tag :id)) :test #'equal) "task")
+                    ((cl-find my/lifeos-task-export-project-tag-id tags
+                              :key (lambda (tag) (plist-get tag :id)) :test #'equal) "project")
+                    (t nil))))
         (condition-case err
             (progn
-              (unless (and (stringp id) (stringp file)
+              (unless (and (stringp id) (stringp file) kind
                            (not (gethash id seen)) (file-regular-p file)
                            (file-in-directory-p (file-truename file) root)
                            (not (file-symlink-p file))
-                           (equal (plist-get node :id) id)
-                           ;; Supertag exposes the Org ID as the node id;
-                           ;; `:properties' carries user properties such as
-                           ;; EFFORT/WORK_MODE, not :ID. The on-disk heading ID
-                           ;; is verified below and must be unique.
-                           (cl-find my/lifeos-task-export-tag-id (plist-get node :tags)
-                                    :key (lambda (tag) (plist-get tag :id)) :test #'equal))
+                           (equal (plist-get node :id) id))
                 (error "Unverified index identity, membership or source"))
               (puthash id t seen)
               ;; Parse in a disposable buffer without the user's Org mode
@@ -321,22 +327,29 @@ export is diagnostic only; absence never means deletion."
                              (setq found (1+ (or found 0)))
                              (let* ((todo (org-get-todo-state))
                                     (deadline (org-entry-get nil "DEADLINE"))
-                                    (effort (org-entry-get nil "EFFORT")))
+                                    ;; Projects are deadline evidence, not task
+                                    ;; demand. Never borrow PROJECT_EFFORT or an
+                                    ;; incidental EFFORT as task demand.
+                                    (effort (and (equal kind "task")
+                                                 (org-entry-get nil "EFFORT"))))
                                ;; Supertag's public :title is cleaned of inline #tags,
                                ;; so exact title equality is not an invariant and
                                ;; stripping them here would reimplement its parser.
                                ;; The public node shape also exposes no :todo, so
                                ;; status cannot be compared with the index.
-                               ;; Identity is bound by node id, file and task tag;
-                               ;; the on-disk ID must be unique and status is read
+                               ;; Identity is bound by node id, file and tag; the
+                               ;; on-disk ID must be unique and status is read
                                ;; from these verified bytes.
                                (unless (or (null todo)
                                            (member todo org-todo-keywords-1))
                                  (error "Disk todo state is not a known keyword"))
                                (setq record `((id . ,id) (file . ,(file-relative-name file root))
                                               (fileHash . ,hash)
-                                              (membership . ((tagId . ,my/lifeos-task-export-tag-id)
+                                              (membership . ((tagId . ,(if (equal kind "project")
+                                                                           my/lifeos-task-export-project-tag-id
+                                                                         my/lifeos-task-export-tag-id))
                                                              (via . "supertag-api-query/node")))
+                                              (kind . ,kind)
                                               (title . ,(plist-get node :title))
                                               (status . ,(if (org-entry-is-done-p) "complete" "open"))
                                               (deadline . ,deadline) (effort . ,effort)
