@@ -20,9 +20,6 @@
                 (evil-normal-state))))
   (with-eval-after-load 'evil
     (evil-set-initial-state 'pdf-view-mode 'normal)
-    (define-key pdf-view-mode-map (kbd "M-;")
-      (lookup-key (evil-get-auxiliary-keymap general-override-mode-map 'normal t)
-                  (kbd "M-;")))
     (evil-define-key 'normal pdf-view-mode-map
       (kbd "j") #'pdf-view-next-line-or-next-page
       (kbd "k") #'pdf-view-previous-line-or-previous-page

@@ -3,12 +3,36 @@
 ;; All config lives in individual files under these directories.
 ;; Load order matters (dependencies first).
 
+(defvar my/config-root
+  (file-name-directory
+   (file-truename (or load-file-name user-init-file buffer-file-name
+                      ;; Falls back here when called from `M-:' or a REPL,
+                      ;; where all three of the above are nil.
+                      (expand-file-name "init.el" user-emacs-directory))))
+  "Directory containing this Emacs config.")
+
+(defvar my/failed-modules nil
+  "Modules that failed to load during startup.")
+
 (defun my/load-module (path)
-  "Load a module file from config directory without errors."
-  (let ((config-root (file-name-directory
-                       (file-truename (or user-init-file load-file-name buffer-file-name)))))
-    (load (expand-file-name (concat path ".el") config-root)
-          nil t t)))
+  "Load module PATH, isolating its failures.
+
+A module that signals an error is reported and skipped instead of aborting
+the rest of init.el.  One broken optional package (a half-cloned straight
+checkout, a missing executable) used to leave a half-configured Emacs with
+no keybindings at all; now it costs exactly that one module.
+
+With `--debug-init' the error is re-signalled, so development still stops at
+the real problem."
+  (let ((file (expand-file-name (concat path ".el") my/config-root)))
+    (condition-case err
+        (load file nil t t)
+      (error
+       (push (cons path (error-message-string err)) my/failed-modules)
+       (message "my/load-module: %s failed: %s" path (error-message-string err))
+       (when init-file-debug
+         (signal (car err) (cdr err)))
+       nil))))
 
 ;; --- startup ---
 (my/load-module "startup/straight")
@@ -35,8 +59,9 @@
 (my/load-module "appearance/dimmer")
 (my/load-module "appearance/ui")
 
-;; --- leader keys ---
-(my/load-module "leader/general")
+;; --- keys ---
+;; Personal bindings on C-c. The old M-; leader is gone.
+(my/load-module "keys/global")
 
 ;; --- completion ---
 (my/load-module "completion/vertico")
@@ -116,7 +141,6 @@
 (my/load-module "org/org-gcal")
 (my/load-module "org/calfw")
 (my/load-module "org/calfw-org")
-(my/load-module "org/openspec")
 ;; Week calendar over org files (#7)
 (my/load-module "org/org-timegrid")
 
@@ -149,3 +173,11 @@
 
 ;; --- custom helpers ---
 (my/load-module "custom/helpers")
+
+;; --- startup summary ---
+;; Modules are loaded in isolation, so report anything that broke instead of
+;; leaving a silently half-configured Emacs.
+(when my/failed-modules
+  (message "Emacs startup: %d module(s) failed to load: %s"
+           (length my/failed-modules)
+           (mapconcat #'car (reverse my/failed-modules) ", ")))

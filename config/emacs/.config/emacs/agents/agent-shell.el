@@ -304,23 +304,3 @@
         (kbd "C-c C-k") #'my/agent-shell-force-reset)))
   (define-key agent-shell-mode-map (kbd "C-c C-k") #'my/agent-shell-force-reset))
 
-(with-eval-after-load 'general
-  (my/leader
-    "a"   '(:ignore t :which-key "ai")
-    "a a" '(agent-shell :which-key "agent shell")
-    "a o" '(agent-shell-opencode-start-agent :which-key "opencode")
-    "a c" '(agent-shell-anthropic-start-claude-code :which-key "claude")
-    "a t" '(agent-shell-toggle :which-key "toggle")
-    "a s" '(agent-shell-send-region :which-key "send region")
-    "a m" '(agent-shell-set-session-mode :which-key "set mode")
-    "a M" '(agent-shell-set-session-model :which-key "set model")
-    "a u" '(agent-shell-show-usage :which-key "usage")
-    "a S" '(my/agent-shell-session-status :which-key "session status")
-    "a L" '(my/agent-shell-open-diff-debug-log :which-key "diff debug log")
-    "a l" '(agent-shell-view-acp-logs :which-key "ACP logs")
-    "a r" '(my/agent-shell-force-reset :which-key "force reset")
-    "a C" '(my/agent-shell-clear-diff-debug-log :which-key "clear diff debug log")
-    "a R" '(agent-review :which-key "review code")
-    "a d" '(agent-shell-manager-toggle :which-key "manager")
-    "a n" '(knockknock-close :which-key "close notification")))
-

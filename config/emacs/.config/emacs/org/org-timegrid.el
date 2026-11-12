@@ -3,12 +3,15 @@
 
 ;; A drag-to-create week view backed by org timestamps. New entries land in
 ;; calendar.org, which is already part of `org-agenda-files'.
+;;
+;; Bound to `C-c w', not `C-c c': Org already owns `C-c c' (org-capture) on the
+;; global map, and capture matters more than the week grid.
 
 (use-package org-timegrid
   ;; Pinned to the repo: the MELPA recipe checkout here predates this package.
   :straight (:host github :repo "Gleek/org-timegrid" :files ("*.el"))
   :commands (org-timegrid-week)
-  :bind ("C-c c" . org-timegrid-week)
+  :bind ("C-c w" . org-timegrid-week)
   :init
   (setq org-timegrid-org-capture-file
         (expand-file-name "calendar.org" org-directory))

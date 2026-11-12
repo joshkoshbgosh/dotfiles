@@ -6,6 +6,8 @@
 **/*key*
 !/config/emacs/.config/emacs/core/which-key.el
 !/config/emacs/.config/emacs/core/keyfreq.el
+!/config/emacs/.config/emacs/keys/
+!/config/emacs/.config/emacs/keys/**
 **/*.pem
 **/id_rsa*
 **/id_ed25519*
