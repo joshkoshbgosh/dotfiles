@@ -28,7 +28,8 @@
 (my/load-module "evil/evil-commentary")
 
 ;; --- tabs & appearance ---
-(my/load-module "tabs/centaur-tabs")
+;; Centaur-tabs disabled: the tab strip was visual noise (#10).
+;; The module file is kept on disk but no longer loaded.
 (my/load-module "appearance/dimmer")
 (my/load-module "appearance/ui")
 

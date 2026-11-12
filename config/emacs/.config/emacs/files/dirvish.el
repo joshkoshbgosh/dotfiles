@@ -76,12 +76,10 @@
   ;; No line numbers in dired/dirvish
   (add-hook 'dired-mode-hook (lambda () (display-line-numbers-mode -1)))
 
-  ;; Help segment for dirvish mode-line
-  (dirvish-define-mode-line my-help
-    "Compact key hints."
-    (propertize " j/k move  h/- up  l open  m/u/t marks  C copy  R rename  D delete  g refresh  SPC ? shortcuts "
-                'face 'shadow))
-  (setq dirvish-mode-line-format '(:left (my-help) :right (sort symlink)))
+  ;; No key-hint segment in the mode-line: those hints were noise and partly
+  ;; stale. `q' already quits (dirvish binds it to `dirvish-quit'), and
+  ;; `C-h m' / embark show what is available where.
+  (setq dirvish-mode-line-format '(:left (sort symlink) :right (vc-state)))
 
   ;; Evil keybindings for dired navigation
   (with-eval-after-load 'evil

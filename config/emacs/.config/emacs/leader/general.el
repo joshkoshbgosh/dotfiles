@@ -18,9 +18,6 @@
     "b"   '(:ignore t :which-key "buffers")
     "b b" '(consult-buffer :which-key "switch buffer")
     "b d" '(kill-current-buffer :which-key "kill buffer")
-    "b D" '(centaur-tabs-kill-other-buffers-in-current-group :which-key "kill other buffers in group")
-    "b n" '(centaur-tabs-forward :which-key "next tab")
-    "b p" '(centaur-tabs-backward :which-key "prev tab")
     "w"   '(:ignore t :which-key "windows")
     "w /" '(split-window-right :which-key "split right")
     "w -" '(split-window-below :which-key "split below")
@@ -82,11 +79,4 @@
     "M-h" #'windmove-left
     "M-j" #'windmove-down
     "M-k" #'windmove-up
-    "M-l" #'windmove-right)
-
-  ;; H/L for tab switching in normal mode (LazyVim-style)
-  (general-define-key
-    :states '(normal)
-    :keymaps 'override
-    "H" #'centaur-tabs-backward
-    "L" #'centaur-tabs-forward))
+    "M-l" #'windmove-right))
