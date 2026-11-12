@@ -20,6 +20,8 @@
 (my/load-module "core/which-key")
 (my/load-module "core/discover")
 (my/load-module "core/transient")
+;; Command-frequency tracking (#13): `M-x keyfreq-show'
+(my/load-module "core/keyfreq")
 
 ;; --- editing ---
 (my/load-module "evil/undo-fu")
@@ -45,12 +47,16 @@
 (my/load-module "completion/consult-dir")
 (my/load-module "completion/embark")
 (my/load-module "completion/embark-consult")
+;; Pull-request style diff review (#5)
+(my/load-module "completion/diff-review")
 
 ;; --- projects ---
 (my/load-module "projects/project")
 
 ;; --- git ---
 (my/load-module "git/magit")
+;; Forge: issues and pull requests in magit (#6)
+(my/load-module "git/magit-forge")
 (my/load-module "git/magit-todos")
 (my/load-module "git/diff-hl")
 
@@ -62,6 +68,9 @@
 (my/load-module "terminal/ghostel")
 (my/load-module "terminal/eat")
 
+;; excali-mode: canvas API only, inert below Emacs 32 (#17)
+(my/load-module "modes/excali-mode")
+
 ;; --- agents ---
 (my/load-module "agents/agent-shell-notifications")
 (my/load-module "agents/knockknock")
@@ -70,6 +79,9 @@
 (my/load-module "agents/meta-agent-shell")
 (my/load-module "agents/agent-shell-knockknock")
 (my/load-module "agents/agent-shell")
+
+;; embr: Chromium rendered inside Emacs (#18)
+(my/load-module "browser/embr")
 
 ;; --- lsp ---
 (my/load-module "lsp/corfu")
@@ -101,12 +113,25 @@
 (my/load-module "org/calfw")
 (my/load-module "org/calfw-org")
 (my/load-module "org/openspec")
+;; Week calendar over org files (#7)
+(my/load-module "org/org-timegrid")
+
+;; texpresso-view: inert until a patched TeXpresso checkout exists (#8)
+(my/load-module "org/texpresso-view")
 
 ;; --- markdown ---
 (my/load-module "markdown/markdown-mode")
+;; d2 / mermaid / plantuml / graphviz for md and org blocks (#2)
+(my/load-module "markdown/diagrams")
 
-;; Restore saved buffers after their major modes are available.
-(my/load-module "projects/persp-mode")
+;; --- workspaces ---
+;; space-tree replaces persp-mode (#15); bookmark-view persists views and
+;; agent-shell-links keeps agent sessions reachable without autosaved sessions.
+(my/load-module "projects/space-tree")
+(my/load-module "projects/bookmark-view")
+(my/load-module "projects/agent-shell-links")
+;; Indentation guides for elisp (#9)
+(my/load-module "projects/tree-guide")
 
 ;; --- pdf ---
 (my/load-module "pdf/pdf-tools")

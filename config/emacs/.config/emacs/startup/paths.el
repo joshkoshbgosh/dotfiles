@@ -26,4 +26,10 @@
    (file-truename (or user-init-file load-file-name buffer-file-name)))
   "Directory containing this Emacs config.")
 
+(defvar my/state-dir
+  (expand-file-name "emacs/" (or (getenv "XDG_STATE_HOME") "~/.local/state"))
+  "Directory for persistent state that is not tracked in the dotfiles repo.")
+
+(make-directory my/state-dir t)
+
 
