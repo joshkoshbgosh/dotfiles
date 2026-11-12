@@ -60,6 +60,10 @@
 (my/load-module "git/magit-todos")
 (my/load-module "git/diff-hl")
 
+;; --- windows ---
+;; Popup management: `C-`' toggles the latest help/compilation/grep popup.
+(my/load-module "window/popper")
+
 ;; --- file explorer ---
 (my/load-module "files/dirvish")
 
