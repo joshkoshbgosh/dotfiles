@@ -14,8 +14,21 @@ tree-sitter/
 .emacs.desktop.lock
 history
 places
+places.eld
 projects.eld
 recentf
+recentf.eld
+bookmarks
+persist/
+supertag/
+.org-id-locations
+.org-generic-id-locations
+dirvish/thumbnails/
+
+# Credentials and live session data
+oauth2-auto.plist
+request/
+url/
 
 # Compiled files
 *.elc

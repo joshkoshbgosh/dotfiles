@@ -13,13 +13,22 @@
 /session-ses_*.md
 
 # generated Emacs runtime state
+/config/emacs/.config/emacs/supertag/
 /config/emacs/.config/emacs/org-supertag/
 /config/emacs/.config/emacs/.org-id-locations
+/config/emacs/.config/emacs/.org-generic-id-locations
+/config/emacs/.config/emacs/bookmarks
+/config/emacs/.config/emacs/persist/
+/config/emacs/.config/emacs/dirvish/thumbnails/
 /config/emacs/.config/emacs/places.eld
 /config/emacs/.config/emacs/recentf.eld
 /config/emacs/.config/emacs/tramp
 # Emacs' url.el cookie jar holds live session cookies
 /config/emacs/.config/emacs/url/
+# request.el keeps a live cookie jar too
+/config/emacs/.config/emacs/request/
+# oauth2-auto stores OAuth credentials here
+/config/emacs/.config/emacs/oauth2-auto.plist
 
 # backups written next to the originals by omarchy and by pacman
 **/*.bak
