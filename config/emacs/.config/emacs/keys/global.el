@@ -29,6 +29,8 @@
 (keymap-set global-map "C-c f" #'my/find-file-prompt)
 (keymap-set global-map "C-c b" #'consult-buffer)
 (keymap-set global-map "C-c R" #'recentf-open-files)
+;; Browse a GitHub/Codeberg repo without cloning it (files/remoto.el).
+(keymap-set global-map "C-c B" #'remoto-browse)
 
 ;; --- search and jump ---
 (keymap-set global-map "C-c s" #'consult-ripgrep)

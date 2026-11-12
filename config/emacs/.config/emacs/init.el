@@ -89,6 +89,8 @@ the real problem."
 
 ;; --- file explorer ---
 (my/load-module "files/dirvish")
+;; Browse GitHub/Codeberg repos without cloning (C-c B, /gh: paths)
+(my/load-module "files/remoto")
 
 ;; --- terminal ---
 (my/load-module "terminal/vterm")
