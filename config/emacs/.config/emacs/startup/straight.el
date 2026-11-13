@@ -2,6 +2,16 @@
 ;;; startup/straight.el --- straight.el bootstrap and lockfile helpers
 
 (defvar bootstrap-version)
+
+;; Must be set before bootstrap.  straight's default is a single build/
+;; directory shared by every Emacs, and its build cache is invalidated
+;; wholesale when `emacs-version' changes (see `straight--load-build-cache').
+;; That rebuild byte-compiles every package through a blocking batch Emacs
+;; and re-queues native compilation for the whole tree, which froze the UI
+;; for minutes on the 31.1 -> 32.0.50 upgrade in November 2026.  A
+;; per-version build dir keeps the old tree usable and makes upgrades cheap.
+(setq straight-use-version-specific-build-dir t)
+
 (let* ((straight-dir (expand-file-name "straight/" user-emacs-directory))
        (bootstrap-file (expand-file-name "repos/straight.el/bootstrap.el" straight-dir))
        (bootstrap-version 7))
@@ -17,6 +27,9 @@
 (straight-use-package 'use-package)
 (setq straight-use-package-by-default t
       use-package-always-defer t)
+
+;; Package declarations
+(straight-use-package 'combobulate)
 
 ;; Lockfile helpers
 (defun my/straight-freeze ()

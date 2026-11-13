@@ -70,6 +70,7 @@ the real problem."
 (my/load-module "completion/consult-dir")
 (my/load-module "completion/embark")
 (my/load-module "completion/embark-consult")
+(my/load-module "completion/combobulate")
 ;; Pull-request style diff review (#5)
 (my/load-module "completion/diff-review")
 

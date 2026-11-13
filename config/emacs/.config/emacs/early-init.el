@@ -18,6 +18,12 @@
 (setq gc-cons-threshold (* 128 1024 1024)
       gc-cons-percentage 0.6)
 
+;; Cap async native-compilation workers.  The default is half the CPUs (6
+;; here), which on the first start after an Emacs upgrade gathers every
+;; package .eln at once and makes the UI crawl until the queue drains.  A
+;; warm cache is unaffected; this only bounds first-run cost.
+(setq native-comp-async-jobs-number 4)
+
 ;; Silence noisy upstream native-comp warnings from packages we don't patch.
 (when (boundp 'native-comp-jit-compilation-deny-list)
   (dolist (re '("general\\.el\\'"

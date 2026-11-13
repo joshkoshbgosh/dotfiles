@@ -33,8 +33,9 @@
   (setq ediff-window-setup-function #'ediff-setup-windows-plain
         ediff-split-window-function #'split-window-horizontally)
   (defun my/ediff-select-non-side-window (&rest _)
-    (when-let ((win (seq-find (lambda (w) (not (window-parameter w 'window-side)))
-                              (window-list))))
+    (when-let* ((win (seq-find (lambda (w)
+                                 (not (window-parameter w 'window-side)))
+                               (window-list))))
       (select-window win)))
   (advice-add 'ediff-setup-windows-plain :before #'my/ediff-select-non-side-window)
   ;; Enable Emacs server for MCP integration
