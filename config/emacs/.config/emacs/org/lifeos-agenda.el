@@ -285,7 +285,7 @@
    ((eq (bound-and-true-p my/org-gcal-last-poll-error)
         'authentication-required)
     "AUTH REQUIRED")
-((and (boundp 'my/org-gcal-fetch-in-progress)
+   ((and (boundp 'my/org-gcal-fetch-in-progress)
          my/org-gcal-fetch-in-progress)
     "FETCHING")
    ((not (bound-and-true-p my/org-gcal-last-successful-fetch-time))
