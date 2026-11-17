@@ -233,24 +233,10 @@
                'rear-nonsticky t))))
     (insert "\n")))
 
-<<<<<<< HEAD
 (defun my/lifeos-agenda--routine-records (period)
   "Return active routine headings for day-part PERIOD."
   (let ((file (expand-file-name "routines.org" org-directory))
         records)
-=======
-(defun my/lifeos-agenda--current-routine-tag ()
-  "Return the routine period appropriate for the current hour."
-  (let ((hour (string-to-number (format-time-string "%H"))))
-    (cond ((< hour 12) "morning")
-          ((< hour 17) "afternoon")
-          (t "evening"))))
-
-(defun my/lifeos-agenda--routine-records ()
-  "Return active routine headings for the current part of day."
-  (let ((file (expand-file-name "routines.org" org-directory))
-        (period (my/lifeos-agenda--current-routine-tag)) records)
->>>>>>> c638f20 (update)
     (when (file-readable-p file)
       (with-current-buffer (find-file-noselect file)
         (org-with-wide-buffer
