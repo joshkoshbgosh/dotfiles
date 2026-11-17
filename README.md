@@ -369,11 +369,12 @@ unset rather than manufacturing `SAFE`.
 ## Calendar And Travel
 
 `my/org-gcal-fetch` imports incrementally with a 60-day future lookahead;
-`my/org-gcal-full-refresh` clears tokens and imports again. Polling begins five
-seconds after startup and repeats
-every 15 minutes. Overlapping fetches are skipped; successful changed imports
-are normalized, saved, and invalidate planning analysis.
-
+`my/org-gcal-full-refresh` clears tokens and imports again. Run an explicit fetch
+once after Emacs starts to unlock credentials and enable polling for that
+session. Polling then repeats every 15 minutes without permitting password or
+browser prompts. Overlapping fetches are skipped; successful changed imports are
+normalized, saved, and invalidate planning analysis. If unattended token refresh
+fails, the dashboard reports `AUTH REQUIRED`; run an explicit fetch to recover.
 
 Busy timed events block their interval and busy all-day events block the day.
 For solver travel, use:
@@ -439,6 +440,9 @@ npm test
 npm audit --audit-level=moderate
 ```
 
+Verified counts on 2026-10-19 are **167/167 ERT**, **8/8 documentation ERT**, and
+**51/51 Vitest**. TypeScript check and build pass, and npm audit reports zero
+vulnerabilities.
 
 ## Documentation
 
