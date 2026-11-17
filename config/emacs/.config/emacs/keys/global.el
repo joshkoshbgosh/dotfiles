@@ -73,8 +73,9 @@
 (keymap-set global-map "C-c T" #'vterm)
 
 ;; --- window navigation ---
-;; Plain global bindings, not a mode: they work in every buffer and every
-;; editing state, which is what `evil-window-...' used to approximate.
+;; M-hjkl for window navigation (plain global bindings, work in every buffer)
+;; Previously bound to windmove-*; keep those bindings but ensure they take
+;; precedence over any mode-local bindings by binding after module load.
 (keymap-set global-map "M-h" #'windmove-left)
 (keymap-set global-map "M-j" #'windmove-down)
 (keymap-set global-map "M-k" #'windmove-up)

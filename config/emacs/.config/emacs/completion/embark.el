@@ -11,9 +11,12 @@
           embark-isearch-highlight-indicator))
   (add-to-list 'display-buffer-alist
                '("\\`\\*Embark Collect \\(Live\\|Completions\\)\\*"
-                 nil
+                 t
                  (window-parameters (mode-line-format . none))))
 
   :config
   ;; Add magit-status action for files/directories
-  (define-key embark-file-map (kbd "g") #'magit-status))
+  (define-key embark-file-map (kbd "g") #'magit-status)
+  ;; Prevent Embark popup from being dismissed when C-.
+  ;; Bind C-. in embark-mode-map to act without dismissing the popup.
+  (define-key embark-mode-map (kbd "C-.") #'embark-act))
