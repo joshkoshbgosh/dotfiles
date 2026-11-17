@@ -1299,6 +1299,175 @@ refused rather than creating a conflicting record."
                       task-id episode-id effective minutes)))))
         effort))))
 
+(defcustom my/lifeos-effort-anchor-files nil
+  "Files scanned for tasks needing an initial effort anchor.
+nil scans the acquisition root when configured, else every Org file under
+`org-directory', else `org-agenda-files'.  The acquisition snapshot demands
+effort for vault-wide SuperTag membership, so the preview must not silently
+narrow to agenda files."
+  :type '(repeat file)
+  :group 'my/lifeos)
+
+(defun my/lifeos--effort-anchor-default-files ()
+  "Return the default file list for `my/lifeos--effort-anchor-candidates'."
+  (or my/lifeos-effort-anchor-files
+      (let ((root (or (bound-and-true-p my/lifeos-task-acquisition-root)
+                      (bound-and-true-p org-directory))))
+        (and root
+             (file-directory-p root)
+             (directory-files-recursively (file-name-as-directory root)
+                                          "\\.org\\'")))
+      (org-agenda-files)))
+
+(defun my/lifeos--effort-anchor-candidates (&optional files)
+  "Return (CANDIDATES SKIPPED) for active #tasks without an effort episode.
+
+CANDIDATES are plists of :id :title :file :minutes for tasks whose current
+EFFORT can become an initial correction anchor without inventing demand.
+SKIPPED are plists of :title :file :reason for active #tasks that need a human
+decision first: unknown or non-positive EFFORT, existing clocks, or no stable
+ID.  The scan is read-only and closes the buffers it opened."
+  (let ((files (or files (my/lifeos--effort-anchor-default-files)))
+        candidates skipped opened)
+    (unwind-protect
+        (dolist (file files)
+          (unless (get-file-buffer file) (push file opened))
+          (with-current-buffer (find-file-noselect file)
+            (org-with-wide-buffer
+             (org-map-entries
+              (lambda ()
+                (when (and (member (org-get-todo-state) '("TODO" "NEXT" "WAITING"))
+                           (my/lifeos--heading-has-supertag-p "task"))
+                  (let* ((title (my/lifeos--clean-supertag-title
+                                (org-get-heading t t t t) "task"))
+                         (id (my/lifeos--effort-task-id))
+                         (effort-text (org-entry-get nil "EFFORT"))
+                         (effort-minutes (my/lifeos--effort-minutes effort-text))
+                         (state (condition-case nil (my/lifeos-effort-state)
+                                  (error nil)))
+                         (clocks (and state (plist-get state :clocks))))
+                    (cond
+                     ((null state)
+                      (push (list :title title :file file
+                                  :reason "effort records could not be read")
+                            skipped))
+                     ((plist-get state :episode-id) nil)
+                     ((null effort-minutes)
+                      (push (list :title title :file file
+                                  :reason (format "no usable EFFORT (%S)" effort-text))
+                            skipped))
+                     ((<= effort-minutes 0)
+                      (push (list :title title :file file
+                                  :reason (format "non-positive EFFORT (%s)" effort-text))
+                            skipped))
+                     (clocks
+                      (push (list :title title :file file
+                                  :reason (format "%d clock entr%s need explicit accounting"
+                                                  (length clocks)
+                                                  (if (= 1 (length clocks)) "y" "ies")))
+                            skipped))
+                     ((null id)
+                      (push (list :title title :file file :reason "missing stable ID")
+                            skipped))
+                     (t
+                      (push (list :id id :title title :file file
+                                  :minutes effort-minutes)
+                            candidates))))))
+              nil nil))))
+      (dolist (file opened)
+        (when-let* ((buffer (get-file-buffer file)))
+          (kill-buffer buffer))))
+    (list (nreverse candidates) (nreverse skipped))))
+
+(defun my/lifeos-effort-anchor-preview (&optional files)
+  "Show which tasks would receive an initial effort anchor, without writing.
+
+An initial anchor records the task's current EFFORT as remaining effort at one
+shared instant.  It is offered only for active #tasks with a positive EFFORT,
+no effort episode, no clock entries and a stable ID."
+  (interactive)
+  (pcase-let* ((`(,candidates ,skipped)
+                (my/lifeos--effort-anchor-candidates files))
+               (buffer (get-buffer-create "*LifeOS Effort Anchor*")))
+    (with-current-buffer buffer
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (special-mode)
+        (insert "Initial effort anchors\n======================\n")
+        (insert "READ-ONLY preview: nothing is written.\n\n")
+        (insert (format "%d task(s) can be anchored; %d need attention.\n\n"
+                        (length candidates) (length skipped)))
+        (insert "Would be anchored (remaining := current EFFORT, one shared instant)\n")
+        (insert "-------------------------------------------------------------------------\n")
+        (if (null candidates)
+            (insert "None.\n")
+          (dolist (candidate candidates)
+            (insert (format "%-8s %-44s %s\n"
+                            (format "%d:%02d" (/ (plist-get candidate :minutes) 60)
+                                    (% (plist-get candidate :minutes) 60))
+                            (truncate-string-to-width
+                             (plist-get candidate :title) 44 nil nil t)
+                            (plist-get candidate :id)))))
+        (insert "\nNeeds attention (not anchored)\n")
+        (insert "-----------------------------\n")
+        (if (null skipped)
+            (insert "None.\n")
+          (dolist (entry skipped)
+            (insert (format "%-44s %s\n"
+                            (truncate-string-to-width
+                             (plist-get entry :title) 44 nil nil t)
+                            (plist-get entry :reason))))))
+      (goto-char (point-min)))
+    (pop-to-buffer buffer)))
+
+(defun my/lifeos-effort-anchor-apply (candidates effective)
+  "Record an initial effort anchor for CANDIDATES at EFFECTIVE.
+Each candidate is located by its stable ID, so earlier edits in the same file
+cannot shift it.  Returns the number of tasks anchored.  Re-applying the same
+EFFECTIVE and remaining minutes is idempotent; a different correction at the
+same instant is refused by `my/lifeos-set-remaining-effort'."
+  (let ((count 0))
+    (dolist (candidate candidates)
+      (let ((file (plist-get candidate :file))
+            (id (plist-get candidate :id)))
+        (with-current-buffer (find-file-noselect file)
+          (org-with-wide-buffer
+           (goto-char (point-min))
+           (unless (re-search-forward
+                    (concat "^[ \t]*:ID:[ \t]*"
+                            (regexp-quote id) "[ \t]*$")
+                    nil t)
+             (user-error "Task %s is no longer present in %s" id file))
+           (org-back-to-heading t)
+           (atomic-change-group
+             (my/lifeos-set-remaining-effort
+              (plist-get candidate :minutes) effective))
+           (save-buffer)
+           (cl-incf count)))))
+    count))
+
+(defun my/lifeos-effort-anchor-all (&optional effective)
+  "Anchor remaining effort for every eligible active #task at EFFECTIVE.
+
+Remaining becomes the task's current EFFORT at one shared instant, which is the
+contract's legacy rule when no clocked work has been consumed.  Tasks with
+clocks, unknown or non-positive effort, or an existing episode are skipped and
+must be resolved by hand.  This is the only command here that writes Org."
+  (interactive)
+  (let* ((effective (my/lifeos--effort-effective-instant effective))
+         (result (my/lifeos--effort-anchor-candidates))
+         (candidates (car result))
+         (skipped (cadr result)))
+    (unless candidates (user-error "No tasks need an initial effort anchor"))
+    (unless (yes-or-no-p
+             (format "Anchor remaining effort for %d task(s) at %s? "
+                     (length candidates) effective))
+      (user-error "Effort anchoring cancelled"))
+    (let ((count (my/lifeos-effort-anchor-apply candidates effective)))
+      (message "Anchored %d task(s); %d skipped as needing attention"
+               count (length skipped))
+      count)))
+
 (defun my/lifeos-groom-task ()
   "Interactively establish required metadata for the task at point."
   (interactive)

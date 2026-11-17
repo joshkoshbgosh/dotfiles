@@ -168,6 +168,8 @@ replace virtual residual; they are never added on top of the full envelope.
 | `my/lifeos-scaffold-project` | Explicitly mark a heading as a project and add its planning placeholders |
 | `my/lifeos-groom-project` | Fill project deadline, effort, mode, chunk, and confidence interactively |
 | `my/lifeos-set-remaining-effort` | Set remaining work while preserving original effort |
+| `my/lifeos-effort-anchor-preview` | Read-only list of tasks that could get an initial effort anchor |
+| `my/lifeos-effort-anchor-all` | Anchor current `EFFORT` as remaining effort for every eligible task |
 | `my/lifeos-break-down-task` | Convert aggregate work into executable leaves |
 | `my/lifeos-add-dependency` | Add a cycle-checked prerequisite |
 | `my/lifeos-open-ready-task` | Visit a ready task |
@@ -180,6 +182,12 @@ replace virtual residual; they are never added on top of the full envelope.
 Diagnostic navigation visits task and project diagnostic overlays. Project
 summaries and metrics remain available at point through
 `my/lifeos-explain-at-point`.
+
+An initial effort anchor records the task's current `EFFORT` as remaining effort
+at one shared instant; it only applies to active tasks with a positive `EFFORT`,
+no clock entries, and no existing episode. `my/lifeos-effort-anchor-preview` is
+read-only, and `my/lifeos-effort-anchor-all` asks for confirmation before writing
+the append-only `LIFEOS_EFFORT` drawer.
 
 ## Solver Commands
 

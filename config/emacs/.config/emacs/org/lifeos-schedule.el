@@ -88,6 +88,10 @@ The function may call the callback synchronously or asynchronously."
           (progn (org-end-of-subtree t t) (point)))))
 
 (defun my/lifeos-schedule--accepted-markers (&optional buffer)
+  ;; Map the buffer itself, never the file it claims to visit. Org's element
+  ;; cache is keyed by visited file, so the `file' scope on a literal parse
+  ;; buffer can return another buffer's text and markers, which wedges the
+  ;; cache when byte and character offsets disagree.
   (with-current-buffer (or buffer (find-file-noselect
                                    (my/lifeos-schedule--planning-file)))
     (org-with-wide-buffer
@@ -96,7 +100,7 @@ The function may call the callback synchronously or asynchronously."
         (lambda ()
           (when (equal (org-get-heading t t t t) "Accepted schedule")
             (push (copy-marker (point)) markers)))
-        nil 'file)
+        nil nil)
        (nreverse markers)))))
 
 (defun my/lifeos-schedule--parse-child (parent-level)

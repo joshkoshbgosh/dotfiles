@@ -316,6 +316,46 @@
         (my/lifeos-acquire-task-snapshot output root "UTC"))
       (should-not modified-file-kills))))
 
+(ert-deftest lifeos-task-export-reads-disk-bytes-not-a-visiting-buffer ()
+  (lifeos-task-export-test--with-acquisition
+    ;; Org keys its element cache by visited file. A parse buffer that claims
+    ;; the same file name reads the open buffer's unsaved text and markers
+    ;; instead of the literal bytes the snapshot hashes. When decoded and byte
+    ;; lengths differ, those markers can also fall outside the parse buffer and
+    ;; send Org's cache into a reset loop that wedges the Emacs server.
+    (let ((create-lockfiles nil)
+          (buffer (find-file-noselect source)))
+      (with-current-buffer buffer
+        (goto-char (point-min))
+        (search-forward "TODO")
+        (replace-match "DONE" nil t))
+      (unwind-protect
+          (my/lifeos-acquire-task-snapshot output root "UTC")
+        (with-current-buffer buffer
+          (set-buffer-modified-p nil)
+          (kill-buffer buffer))))
+    (let* ((data (lifeos-task-export-test--read output))
+           (task (car (alist-get 'tasks data)))
+           (disk-hash (with-temp-buffer
+                        (insert-file-contents-literally source)
+                        (secure-hash 'sha256 (current-buffer)))))
+      (should (eq (alist-get 'complete data) t))
+      (should (equal (alist-get 'status task) "open"))
+      (should (equal (alist-get 'fileHash task) disk-hash)))))
+
+(ert-deftest lifeos-task-export-empty-effort-is-absence-not-invalid ()
+  (lifeos-task-export-test--with-acquisition
+    ;; Org returns "" for `:EFFORT:' with no value. The coordinator treats any
+    ;; non-null malformed effort as an incomplete export, which would freeze
+    ;; every task in the scan. Absence of demand is null, not "".
+    (with-temp-file source
+      (insert "* TODO Empty effort #task\n:PROPERTIES:\n:ID: id-1\n:EFFORT:\n:END:\n"))
+    (my/lifeos-acquire-task-snapshot output root "UTC")
+    (let* ((data (lifeos-task-export-test--read output))
+           (task (car (alist-get 'tasks data))))
+      (should (eq (alist-get 'complete data) t))
+      (should (eq (alist-get 'effort task) :null)))))
+
 (ert-deftest lifeos-task-export-carries-a03-policy-facts ()
   (lifeos-task-export-test--with-acquisition
     (with-temp-file source
@@ -448,6 +488,39 @@ CORRECTION id=c-bad task=id-1 episode=missing effective=2026-10-12T13:00:00Z rem
                        (my/lifeos-task-export--instant start)))
         (should (equal (alist-get 'end (car blocks))
                        (my/lifeos-task-export--instant end)))))))
+
+(ert-deftest lifeos-task-export-schedule-reads-disk-bytes-not-a-visiting-buffer ()
+  (lifeos-task-export-test--with-acquisition
+    (let* ((create-lockfiles nil)
+           (start 30000000)
+           (end (+ start 60))
+           (block (list :id "block-1" :kind 'task :task-id "id-1"
+                        :source-id "id-1" :title "Work" :start start :end end
+                        :minutes 60 :role 'keep))
+           (plan (my/lifeos-schedule-serialize-plan
+                  "plan-1" "source-fp" (- start 60) (+ end 60) start
+                  (list block)))
+           (planning (expand-file-name "planning.org" root)))
+      (with-temp-file planning (insert plan))
+      (let ((buffer (let ((create-lockfiles nil))
+                      (find-file-noselect planning))))
+        (unwind-protect
+            (progn
+              ;; Unsaved edit: a second Accepted schedule makes the visiting
+              ;; buffer's plan invalid. The export hashes and parses disk
+              ;; bytes, so it must ignore this buffer entirely.
+              (with-current-buffer buffer
+                (goto-char (point-max))
+                (insert "\n* Accepted schedule\n"))
+              (my/lifeos-acquire-task-snapshot output root "UTC")
+              (let* ((data (lifeos-task-export-test--read output))
+                     (schedule (alist-get 'schedule data)))
+                (should (eq (alist-get 'valid schedule) t))
+                (should (equal (alist-get 'planId schedule) "plan-1"))
+                (should (= (length (alist-get 'blocks schedule)) 1))))
+          (with-current-buffer buffer
+            (set-buffer-modified-p nil)
+            (kill-buffer buffer)))))))
 
 (ert-deftest lifeos-task-export-withholds-invalid-schedule-blocks ()
   (lifeos-task-export-test--with-acquisition

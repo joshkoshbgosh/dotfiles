@@ -194,18 +194,22 @@ but never carries blocks."
       (my/lifeos-task-export--schedule-value
        t nil nil nil nil nil (list "planning file is outside acquisition root")))
      (t
-      ;; `org-map-entries' only scans a buffer as a file when it has a
-      ;; buffer-file-name. Use a disposable, hook-free buffer and clear the
-      ;; modified flag before killing it so Emacs never offers to save the vault.
+      ;; Never give this disposable buffer a file name and never let Org's
+      ;; element cache serve it. `org-map-entries' with the `file' scope
+      ;; resolves through `buffer-file-name', and Org keys that cache by
+      ;; visited file: a name matching a buffer the user has open makes this
+      ;; scan read that buffer's unsaved text and element markers. A marker
+      ;; from a decoded buffer can fall outside these literal bytes, and Org
+      ;; then resets its cache in a loop that pins Emacs at 100% CPU.
       (let ((buffer (generate-new-buffer " *lifeos-schedule-parse*"))
             (relative (file-relative-name (file-truename file) root)))
         (unwind-protect
             (with-current-buffer buffer
               (insert-file-contents-literally file)
-              (setq-local buffer-file-name file)
               (let ((org-mode-hook nil)) (org-mode))
-              (my/lifeos-task-export--schedule-from-buffer
-               buffer relative (secure-hash 'sha256 (current-buffer)) tasks))
+              (let ((org-element-use-cache nil))
+                (my/lifeos-task-export--schedule-from-buffer
+                 buffer relative (secure-hash 'sha256 (current-buffer)) tasks)))
           (when (buffer-live-p buffer)
             (with-current-buffer buffer
               (set-buffer-modified-p nil))
@@ -480,53 +484,72 @@ export is diagnostic only; absence never means deletion."
                       (let ((hash (secure-hash 'sha256 (current-buffer)))
                             (found nil)
                             (record nil))
-                        (setq-local buffer-file-name file)
+                        ;; Never give this disposable buffer a file name, and
+                        ;; never let Org's element cache serve it. Org keys
+                        ;; that cache by visited file, so a name matching a
+                        ;; buffer the user has open makes the scan read that
+                        ;; buffer's unsaved text and element markers instead of
+                        ;; these literal bytes. A marker from a decoded buffer
+                        ;; can fall outside a literally-inserted one (UTF-8
+                        ;; bytes outnumber characters), and Org then resets its
+                        ;; cache in a loop that pins Emacs at 100% CPU and
+                        ;; blocks the server.
                         (let ((org-mode-hook nil)) (org-mode))
-                        (org-map-entries
-                         (lambda ()
-                           (when (equal (org-entry-get nil "ID") id)
-                             (setq found (1+ (or found 0)))
-                             (let* ((todo (org-get-todo-state))
-                                    (deadline (org-entry-get nil "DEADLINE"))
-                                    ;; Projects are deadline evidence, not task
-                                    ;; demand. Never borrow PROJECT_EFFORT or an
-                                    ;; incidental EFFORT as task demand.
-                                    (effort (and (equal kind "task")
-                                                 (org-entry-get nil "EFFORT"))))
-                               ;; Supertag's public :title is cleaned of inline #tags,
-                               ;; so exact title equality is not an invariant and
-                               ;; stripping them here would reimplement its parser.
-                               ;; The public node shape also exposes no :todo, so
-                               ;; status cannot be compared with the index.
-                               ;; Identity is bound by node id, file and tag; the
-                               ;; on-disk ID must be unique and status is read
-                               ;; from these verified bytes.
-                               (unless (or (null todo)
-                                           (member todo org-todo-keywords-1))
-                                 (error "Disk todo state is not a known keyword"))
-                               (setq record `((id . ,id) (file . ,(file-relative-name file root))
-                                              (fileHash . ,hash)
-                                              (membership . ((tagId . ,(if (equal kind "project")
-                                                                           my/lifeos-task-export-project-tag-id
-                                                                         my/lifeos-task-export-tag-id))
-                                                             (via . "supertag-api-query/node")))
-                                              (kind . ,kind)
-                                              (title . ,(plist-get node :title))
-                                              (status . ,(if (org-entry-is-done-p) "complete" "open"))
-                                              (deadline . ,deadline) (effort . ,effort)
-                                              ;; A03 policy facts. WORK_MODE is
-                                              ;; task-local; DEFAULT_WORK_MODE is
-                                              ;; inherited from the nearest
-                                              ;; project ancestor.
-                                              (workMode . ,(my/lifeos-task-export--work-mode))
-                                              (waitUntil . ,(org-entry-get nil "WAIT_UNTIL"))
-                                              (scheduled . ,(org-entry-get nil "SCHEDULED"))
-                                              (prerequisites . ,(vconcat (my/lifeos-task-export--dependency-targets)))
-                                              ;; Correction-anchored effort input is task-only:
-                                              ;; a project deadline never borrows project effort.
-                                              ,@(when (equal kind "task")
-                                                  `((effortState . ,(my/lifeos-task-export--effort-evidence)))))))))
-                         nil 'file)
+                        (let ((org-element-use-cache nil))
+                          (org-map-entries
+                           (lambda ()
+                             (when (equal (org-entry-get nil "ID") id)
+                               (setq found (1+ (or found 0)))
+                               (let* ((todo (org-get-todo-state))
+                                      (deadline (org-entry-get nil "DEADLINE"))
+                                      ;; Projects are deadline evidence, not task
+                                      ;; demand. Never borrow PROJECT_EFFORT or an
+                                      ;; incidental EFFORT as task demand.
+                                      (effort (and (equal kind "task")
+                                                   ;; An empty or blank EFFORT is
+                                                   ;; absence of demand, not a
+                                                   ;; malformed claim: normalize
+                                                   ;; it to null so a stray
+                                                   ;; property line cannot freeze
+                                                   ;; the whole scan.
+                                                   (let ((value (org-entry-get nil "EFFORT")))
+                                                     (and (stringp value)
+                                                          (let ((trimmed (string-trim value)))
+                                                            (unless (string-empty-p trimmed) trimmed)))))))
+				 ;; Supertag's public :title is cleaned of inline #tags,
+				 ;; so exact title equality is not an invariant and
+				 ;; stripping them here would reimplement its parser.
+				 ;; The public node shape also exposes no :todo, so
+				 ;; status cannot be compared with the index.
+				 ;; Identity is bound by node id, file and tag; the
+				 ;; on-disk ID must be unique and status is read
+				 ;; from these verified bytes.
+				 (unless (or (null todo)
+                                             (member todo org-todo-keywords-1))
+                                   (error "Disk todo state is not a known keyword"))
+				 (setq record `((id . ,id) (file . ,(file-relative-name file root))
+						(fileHash . ,hash)
+						(membership . ((tagId . ,(if (equal kind "project")
+                                                                             my/lifeos-task-export-project-tag-id
+                                                                           my/lifeos-task-export-tag-id))
+                                                               (via . "supertag-api-query/node")))
+						(kind . ,kind)
+						(title . ,(plist-get node :title))
+						(status . ,(if (org-entry-is-done-p) "complete" "open"))
+						(deadline . ,deadline) (effort . ,effort)
+						;; A03 policy facts. WORK_MODE is
+						;; task-local; DEFAULT_WORK_MODE is
+						;; inherited from the nearest
+						;; project ancestor.
+						(workMode . ,(my/lifeos-task-export--work-mode))
+						(waitUntil . ,(org-entry-get nil "WAIT_UNTIL"))
+						(scheduled . ,(org-entry-get nil "SCHEDULED"))
+						(prerequisites . ,(vconcat (my/lifeos-task-export--dependency-targets)))
+						;; Correction-anchored effort input is task-only:
+						;; a project deadline never borrows project effort.
+						,@(when (equal kind "task")
+                                                    `((effortState . ,(my/lifeos-task-export--effort-evidence)))))))))
+                           nil nil))
                         (unless (= (or found 0) 1) (error "Missing or duplicate Org ID"))
                         (push record tasks)))
                   ;; `org-mode' marks the buffer modified even though its text is

@@ -579,6 +579,116 @@ CLOCK: [2026-10-12 Mon 09:00]--[2026-10-12 Mon 09:30] =>  0:30
                     :type 'user-error)
       (should (= (length (plist-get (my/lifeos-effort-state) :corrections)) 1)))))
 
+(ert-deftest my/lifeos-effort-anchor-candidates-classifies-tasks ()
+  (my/lifeos-test-with-agenda-file
+      "* TODO [#A] Anchor me #task
+:PROPERTIES:
+:ID: anchor-id
+:EFFORT: 1:30
+:IMPACT: High
+:WORK_MODE: Deep
+:END:
+* TODO [#B] Unknown effort #task
+:PROPERTIES:
+:ID: unknown-id
+:EFFORT:
+:IMPACT: High
+:WORK_MODE: Deep
+:END:
+* TODO [#B] Already anchored #task
+:PROPERTIES:
+:ID: anchored-id
+:EFFORT: 1:00
+:IMPACT: High
+:WORK_MODE: Deep
+:END:
+:LOGBOOK:
+CLOCK: [2026-10-12 Mon 09:00]--[2026-10-12 Mon 09:30] =>  0:30
+:END:
+"
+    (let ((my/lifeos-effort-anchor-files (list (car org-agenda-files))))
+      (with-current-buffer (find-file-noselect (car org-agenda-files))
+        (goto-char (point-min))
+        (search-forward "Already anchored")
+        (my/lifeos-set-remaining-effort
+         60 (format-time-string "%Y-%m-%dT%H:%M:00Z"
+                                (org-time-string-to-time "2026-10-12 Mon 09:30") t))
+        (set-buffer-modified-p nil))
+      (let* ((result (my/lifeos--effort-anchor-candidates))
+             (candidates (car result))
+             (skipped (cadr result)))
+        (should (equal (mapcar (lambda (candidate) (plist-get candidate :id))
+                               candidates)
+                       '("anchor-id")))
+        (should (= (plist-get (car candidates) :minutes) 90))
+        (should (equal (mapcar (lambda (entry) (plist-get entry :title)) skipped)
+                       '("Unknown effort")))))))
+
+(ert-deftest my/lifeos-effort-anchor-preview-is-read-only ()
+  (my/lifeos-test-with-agenda-file
+      "* TODO [#A] Anchor me #task
+:PROPERTIES:
+:ID: anchor-id
+:EFFORT: 1:30
+:IMPACT: High
+:WORK_MODE: Deep
+:END:
+"
+    (let* ((file (car org-agenda-files))
+           (my/lifeos-effort-anchor-files (list file))
+           (before (with-temp-buffer
+                     (insert-file-contents file)
+                     (buffer-string))))
+      (my/lifeos-effort-anchor-preview)
+      (unwind-protect
+          (with-current-buffer "*LifeOS Effort Anchor*"
+            (should (string-match-p "READ-ONLY preview" (buffer-string)))
+            (should (string-match-p "1 task(s) can be anchored" (buffer-string)))
+            (should (string-match-p "anchor-id" (buffer-string))))
+        (kill-buffer "*LifeOS Effort Anchor*"))
+      (should (equal (with-temp-buffer
+                       (insert-file-contents file)
+                       (buffer-string))
+                     before)))))
+
+(ert-deftest my/lifeos-effort-anchor-apply-is-idempotent ()
+  (my/lifeos-test-with-agenda-file
+      "* TODO [#A] Anchor me #task
+:PROPERTIES:
+:ID: anchor-id
+:EFFORT: 1:30
+:ORIGINAL_EFFORT: 1:30
+:IMPACT: High
+:WORK_MODE: Deep
+:END:
+"
+    (let* ((file (car org-agenda-files))
+           (my/lifeos-effort-anchor-files (list file))
+           (create-lockfiles nil)
+           (backup-inhibited t)
+           (effective "2026-11-13T01:40:00Z")
+           (candidates (car (my/lifeos--effort-anchor-candidates))))
+      (should (= (length candidates) 1))
+      (should (= (my/lifeos-effort-anchor-apply candidates effective) 1))
+      (with-current-buffer (find-file-noselect file)
+        (goto-char (point-min))
+        (org-back-to-heading t)
+        (should (equal (org-entry-get nil "EFFORT") "1:30"))
+        (should (equal (org-entry-get nil "ORIGINAL_EFFORT") "1:30"))
+        (let ((state (my/lifeos-effort-state)))
+          (should (equal (plist-get state :episode-started-at) effective))
+          (should (= (length (plist-get state :episodes)) 1))
+          (should (= (length (plist-get state :corrections)) 1))
+          (should (= (plist-get (car (plist-get state :corrections))
+                                :remaining-minutes)
+                     90))))
+      ;; Re-applying the same instant and minutes must not duplicate records.
+      (should (= (my/lifeos-effort-anchor-apply candidates effective) 1))
+      (with-current-buffer (find-file-noselect file)
+        (goto-char (point-min))
+        (org-back-to-heading t)
+        (should (= (length (plist-get (my/lifeos-effort-state) :corrections)) 1))))))
+
 (ert-deftest my/lifeos-effort-anchor-survives-file-reload ()
   (let* ((file (make-temp-file "lifeos-effort-" nil ".org"))
          (effective (format-time-string
