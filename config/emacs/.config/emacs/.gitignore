@@ -33,3 +33,6 @@ url/
 # Compiled files
 *.elc
 *.eln
+
+# forge writes its own database
+forge-database.sqlite
