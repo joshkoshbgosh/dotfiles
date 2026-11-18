@@ -18,11 +18,15 @@
 (setq gc-cons-threshold (* 128 1024 1024)
       gc-cons-percentage 0.6)
 
-;; Cap async native-compilation workers.  The default is half the CPUs (6
-;; here), which on the first start after an Emacs upgrade gathers every
-;; package .eln at once and makes the UI crawl until the queue drains.  A
-;; warm cache is unaffected; this only bounds first-run cost.
-(setq native-comp-async-jobs-number 4)
+;; Bound cold-cache compilation cost before loading any packages.  Use one
+;; worker on the Mac to leave resources for the UI; keep four on Linux.
+;; Existing native-compiled packages remain usable.
+(setq native-comp-async-jobs-number (if (eq system-type 'darwin) 1 4))
+
+;; Keep compiler diagnostics in *Warnings* without repeatedly displaying it
+;; on macOS.  This does not suppress the log or disable native compilation.
+(when (eq system-type 'darwin)
+  (setq native-comp-async-report-warnings-errors 'silent))
 
 ;; Silence noisy upstream native-comp warnings from packages we don't patch.
 (when (boundp 'native-comp-jit-compilation-deny-list)
