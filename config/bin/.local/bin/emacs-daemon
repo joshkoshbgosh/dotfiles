@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Ensure the Emacs daemon is running. Idempotent and safe to call concurrently.
+#
+# EMACS_ROOT overrides the default Emacs installation (the flake's ./result).
+
+set -euo pipefail
+
+EMACS_ROOT="${EMACS_ROOT:-$HOME/Work/emacs-nix/result}"
+EMACS="$EMACS_ROOT/bin/emacs"
+CLIENT="$EMACS_ROOT/bin/emacsclient"
+
+server_up() { "$CLIENT" -e t >/dev/null 2>&1; }
+
+if [[ ! -x $EMACS || ! -x $CLIENT ]]; then
+  echo "emacs-daemon: no Emacs at $EMACS_ROOT (set EMACS_ROOT)" >&2
+  exit 1
+fi
+
+server_up && exit 0
+
+# Serialize concurrent callers (login autostart, launcher click) so only one
+# daemon is ever started.
+lock="${XDG_RUNTIME_DIR:-/tmp}/emacs-daemon.lock"
+exec 9>"$lock"
+flock 9
+
+server_up && exit 0
+
+"$EMACS" --daemon
+
+for _ in {1..150}; do
+  server_up && exit 0
+  sleep 0.1
+done
+
+echo "emacs-daemon: daemon did not come up within 15s" >&2
+exit 1

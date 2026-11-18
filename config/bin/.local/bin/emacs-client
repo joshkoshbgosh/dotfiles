@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Open a new Emacs GUI frame, starting the daemon first if needed.
+#
+# Used as the desktop entry Exec and as the login autostart command.
+# EMACS_ROOT overrides the default Emacs installation (the flake's ./result).
+
+set -euo pipefail
+
+EMACS_ROOT="${EMACS_ROOT:-$HOME/Work/emacs-nix/result}"
+EMACS="$EMACS_ROOT/bin/emacs"
+CLIENT="$EMACS_ROOT/bin/emacsclient"
+SELF_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
+if ! "$CLIENT" -e t >/dev/null 2>&1; then
+  # Blocks until the daemon answers (or fails).
+  if ! "$SELF_DIR/emacs-daemon"; then
+    # Daemon could not start; open a standalone frame instead of doing nothing.
+    exec "$EMACS" "$@"
+  fi
+fi
+
+exec "$CLIENT" -c -n "$@"

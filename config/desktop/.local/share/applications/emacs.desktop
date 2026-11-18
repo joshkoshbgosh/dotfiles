@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Emacs
+GenericName=Text Editor
+Comment=Edit text with Emacs (starts the daemon if needed)
+Exec=/home/joshkosh/.local/bin/emacs-client %F
+TryExec=/home/joshkosh/.local/bin/emacs-client
+Icon=emacs
+Terminal=false
+Categories=Development;TextEditor;
+Keywords=emacs;emacsclient;editor;text;org;
+StartupNotify=true
+StartupWMClass=emacs
+MimeType=text/english;text/plain;text/x-makefile;text/x-c++hdr;text/x-c++src;text/x-chdr;text/x-csrc;text/x-java;text/x-moc;text/x-pascal;text/x-tcl;text/x-tex;application/x-shellscript;text/x-c;text/x-c++;x-scheme-handler/org-protocol;
